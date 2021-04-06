@@ -3,7 +3,7 @@
 ## Objective
 * Infer damage rapidly from sparse and various data sources available immediately following disaster
     * Train model on Beirut to predict damage from August 2020 explosion
-    * 
+    * If successful on training location - apply model to new locations
 
 ## Data Sources
 * Building footprint maps - [OSM](https://www.openstreetmap.org/export#map=15/33.8994/35.5006)
@@ -17,10 +17,14 @@
 
 ## Methods
 * Build-graph representation of buildings in city
-* Propagate belief of damage extent within graph - [NetConf](https://github.com/dhivyaeswaran/dhivyaeswaran.github.io/tree/master/code)
-    * Uncertainty decomposition within the graph allowing us to combine benefits of multiple data sources
+    * Nodes - individual buildings?
+    * Edges - based on geographical locations? Building types?
+* Propagate belief of damage extent within graph - [NetConf](https://github.com/dhivyaeswaran/dhivyaeswaran.github.io/tree/master/code) by [Eswaran et al., 2017](https://epubs.siam.org/doi/abs/10.1137/1.9781611974973.17)
+    * Beliefs of damage rating (e.g. no dmg, minor dmg, moderate dmg, major dmg, destroyed)?
+    * Belief values based on source of info (e.g. high to low: ground assessment, ground image, satellite high-res image, satellite low-res, ...)
+    * Uncertainty decomposition (~multi-source uncertainty framework, [Zhao et al., 2020](https://arxiv.org/pdf/2010.12783.pdf)) within the graph will allow us to combine benefits of multiple data sources
 
 ## Week 1 tasks
 1. Get datasets into useable formats
 2. Visualise datasets in jupyter notebook
-3. Convert NetConf to Python
+3. Convert NetConf to Python?
