@@ -1,0 +1,4 @@
+all:
+	matlab -nodisplay -nodesktop -r "run_toy();exit();"
+clean:
+	rm -rf toy/dbeliefs.csv
