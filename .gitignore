@@ -1,5 +1,6 @@
 # Custom
 data/*
+netconf/toy/*
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
