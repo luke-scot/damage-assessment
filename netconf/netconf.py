@@ -14,10 +14,10 @@ def csvread(filename):
 
 ## Transfer edges array to adjacency matrix (N*N (typically sparse))
 def edges_to_adjmat(edges):
-    n = np.max(edges) # Get number of nodes
+    n = np.max(edges)+1 # Get number of nodes
     edges = np.unique(np.append(edges,edges[:,[1,0]],axis=0),axis=0) 
     edges = edges[edges[:,0]!=edges[:,1],:]
-    adj_mat = csr_matrix((np.ones(len(edges[:,0])),(edges[:,0]-1,edges[:,1]-1)),shape=(n,n)).toarray()
+    adj_mat = csr_matrix((np.ones(len(edges[:,0])),(edges[:,0],edges[:,1])),shape=(n,n)).toarray()
     return adj_mat
 
   
