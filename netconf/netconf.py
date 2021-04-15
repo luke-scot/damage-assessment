@@ -66,4 +66,4 @@ def netconf(edges,priors,mod=np.eye(2),
     if verbose: print('{}\t{:.5e}\t\t{}\n'.format(i,diff1,diff2))
   
   # Return final beliefs and elapsed time
-  return B[0], time.time() - t
+  return B, time.time() - t
