@@ -153,24 +153,24 @@ def get_labels(init, X_test, beliefs, values, column):
 
 def class_metrics(y_true, y_pred, targets, threshold=0.5):
   yp_clf = skl.preprocessing.binarize(y_pred.reshape(-1, 1), threshold=threshold)
-  print(skl.metrics.classification_report(y_true, yp_clf, target_names=targets[:len(y_true.unique())], zero_division=0))
-  return yp_clf
+  classes = targets[:len(np.unique(np.append(yp_clf, np.array(y_true))))]
+  print(skl.metrics.classification_report(y_true, yp_clf, target_names=classes, zero_division=0))
+  return yp_clf, classes
 
-def confusion_matrix(axs, y_true, yp_clf, targets):
-  tn = targets[:len(y_true.unique())]
+def confusion_matrix(axs, y_true, yp_clf, classes):
   conf = skl.metrics.confusion_matrix(y_true, yp_clf)
   axs[0].imshow(conf, interpolation='nearest')
-  axs[0].set_xticks(range(len(tn))), axs[0].set_xticklabels(tn), axs[0].set_yticks(range(len(tn))), axs[0].set_yticklabels(tn)
+  axs[0].set_xticks(range(len(classes))), axs[0].set_xticklabels(classes), axs[0].set_yticks(range(len(classes))), axs[0].set_yticklabels(classes)
   axs[0].set_xlabel('Predicted Class'), axs[0].set_ylabel('True Class'), axs[0].set_title('Confusion Matrix')
-  for i in range(len(tn)): 
-      for j in range(len(tn)): text = axs[0].text(j, i, conf[i, j], ha="center", va="center", color="r")
+  for i in range(len(classes)): 
+      for j in range(len(classes)): text = axs[0].text(j, i, conf[i, j], ha="center", va="center", color="r")
   return axs
 
-def cross_entropy_metrics(axs, y_true, y_pred, targets):
-  axs[1].hist(y_pred[(np.array(1-y_true)*y_pred).nonzero()[0]], range = [0,1], bins = 100, label = targets[0], color = 'g', alpha = 0.5)
-  if len(targets[:len(y_true.unique())]) > 1:
-    axs[1].hist(y_pred[(np.array(y_true)*y_pred).nonzero()[0]], range = [0,1], bins = 100, label = targets[1], color = 'r', alpha = 0.8)
-  axs[1].set_title('Cross-Entropy loss: {}'.format(skl.metrics.log_loss(y_true, y_pred)))
+def cross_entropy_metrics(axs, y_true, y_pred, classes):
+  axs[1].hist(y_pred[(np.array(1-y_true)*y_pred).nonzero()[0]], range = [0,1], bins = 100, label = classes[0], color = 'g', alpha = 0.5)
+  if len(classes) > 1:
+    axs[1].hist(y_pred[(np.array(y_true)*y_pred).nonzero()[0]], range = [0,1], bins = 100, label = classes[1], color = 'r', alpha = 0.8)
+  axs[1].set_title('Cross-Entropy loss: {}'.format(skl.metrics.log_loss(y_true, y_pred, labels=[0,1])))
   axs[1].legend(title='True Classes', loc='upper right'), axs[1].set_xlabel('Damage Probability'), axs[1].set_ylabel('Number of predictions')
   return axs
   
