@@ -91,12 +91,12 @@ def ifg_to_df(ifgFile, polygon):
   wholeIfg = rxr.open_rasterio(ifgFile, masked=True).squeeze()
   # Crop ifg
   try: poly = sg.Polygon([[p['lng'], p['lat']] for p in polygon.locations[0]])
-  except: poly = sg.Polygon([[p[1],p[0]] for p in testPoly.locations])
+  except: poly = sg.Polygon([[p[1],p[0]] for p in polygon.locations])
   extent = gpd.GeoSeries([poly])
   croppedIfg = wholeIfg.rio.clip(extent.geometry.apply(sg.mapping), extent.crs)
   # Convert to df
   named = croppedIfg.rename('ifg')
-  return named.to_dataframe(), poly
+  return named.to_dataframe().dropna(subset=['ifg']), poly
 
 def init_beliefs(df, columns, defaultBelief=0.5):
   coords = np.concatenate(np.array(df.axes[0]))
@@ -142,7 +142,7 @@ def create_edges(nodes, adjacent=True,values=False,neighbours=False):
     for i in range(len(values)):
       edges = edges + np.ndarray.tolist(np.array(kneighbors_graph(np.array(nodes[values[i]]).reshape(-1,1),
                                                                   neighbours[i], 
-                                                                  mode='connectivity',
+                                                                  mode='connectivity', 
                                                                   include_self=False).nonzero()).reshape(2,-1).transpose())
   return np.array(edges)
 
@@ -175,3 +175,5 @@ def cross_entropy_metrics(axs, y_true, y_pred, classes):
   return axs
   
 def show_plot(): plt.show()
+  
+def save_plot(fig, filename): fig.savefig(filename)
