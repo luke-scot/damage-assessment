@@ -166,14 +166,29 @@ def confusion_matrix(axs, y_true, yp_clf, classes):
       for j in range(len(classes)): text = axs[0].text(j, i, conf[i, j], ha="center", va="center", color="r")
   return axs
 
-def cross_entropy_metrics(axs, y_true, y_pred, classes):
-  axs[1].hist(y_pred[(np.array(1-y_true)*y_pred).nonzero()[0]], range = [0,1], bins = 100, label = classes[0], color = 'g', alpha = 0.5)
-  if len(classes) > 1:
-    axs[1].hist(y_pred[(np.array(y_true)*y_pred).nonzero()[0]], range = [0,1], bins = 100, label = classes[1], color = 'r', alpha = 0.8)
-  axs[1].set_title('Cross-Entropy loss: {}'.format(skl.metrics.log_loss(y_true, y_pred, labels=[0,1])))
-  axs[1].legend(title='True Classes', loc='upper right'), axs[1].set_xlabel('Damage Probability'), axs[1].set_ylabel('Number of predictions')
-  return axs
+def cross_entropy_metrics(axs, y_true, y_pred, classes, dmgThresh):
+    p1 = axs[1].hist(y_pred[(np.array(1-y_true)*y_pred).nonzero()[0]], range = [0,1], bins = 100, label = 'True '+classes[0], color = 'g', alpha = 0.5)
+    if len(classes) > 1:
+        p2 = axs[1].hist(y_pred[(np.array(y_true)*y_pred).nonzero()[0]], range = [0,1], bins = 100, label = 'True '+classes[1], color = 'r', alpha = 0.8)
+    axs[1].axvline(x=dmgThresh, color='k',linestyle='--', linewidth=1, label='Initial probability')
+    axs[1].set_title('Cross-Entropy loss: {}'.format(skl.metrics.log_loss(y_true, y_pred, labels=[0,1])))
+    axs[1].legend(loc='upper right'), axs[1].set_xlabel('Damage Probability'), axs[1].set_ylabel('Number of predictions')
+    axs[1].text(dmgThresh/2, 0.6,'Undamaged\n Prediction', ha='center', va='center', transform=axs[1].transAxes)
+    axs[1].text(dmgThresh+(1-dmgThresh)/2, 0.6,'Damaged\n Prediction', ha='center', va='center', transform=axs[1].transAxes)
+    return axs
   
 def show_plot(): plt.show()
   
 def save_plot(fig, filename): fig.savefig(filename)
+
+def belief_plot(nodes, ax, column, normalise = False):
+    if normalise: column = skl.preprocessing.normalize(column, norm='l1')[:,1]
+    return nodes.plot(ax=ax, column=column, cmap='RdYlGn_r', vmin=0,vmax=1)  
+  
+def cropped_ifg(ifgFile,polygon):
+    wholeIfg = rxr.open_rasterio(ifgFile, masked=True).squeeze()
+    # Crop ifg
+    try: poly = sg.Polygon([[p['lng'], p['lat']] for p in polygon.locations[0]])
+    except: poly = sg.Polygon([[p[1],p[0]] for p in polygon.locations])
+    extent = gpd.GeoSeries([poly])
+    return wholeIfg.rio.clip(extent.geometry.apply(sg.mapping), extent.crs)
