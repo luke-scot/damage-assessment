@@ -3,6 +3,7 @@ import time
 import numpy as np
 import pandas as pd
 from scipy.sparse import csr_matrix
+from scipy.sparse.linalg import eigsh
 
 ## Functions running netconf graph belief propagation
 # Adapted from Matlab script found at 
@@ -34,10 +35,12 @@ def edges_to_adjmat(edges):
 def netconf(edges,priors,mod=np.eye(2),
             ep=0.5,stop=0,verbose=False,max_iter=100,limit=1e-4):  
   # Define initial variables
+  if verbose: print('Nodes: {}, Edges: {}'.format(len(priors),len(edges)))
+  t = time.time() # Begin timing
   B, [N,k] = priors, priors.shape
   l, diff1 = np.zeros(N), 1
   adj_mat = edges_to_adjmat(edges)
-  v, D = np.abs(np.linalg.eigvals(adj_mat))[0], np.diag(sum(adj_mat))
+  v, D = np.abs(eigsh(adj_mat,1)[0][0]), np.diag(sum(adj_mat))
   M = np.dot(np.divide(ep,v),mod)
   M1 = np.dot(M,np.linalg.pinv(np.eye(k)-np.dot(M,M)))
   M2 = np.dot(M,M1)
@@ -47,8 +50,6 @@ def netconf(edges,priors,mod=np.eye(2),
   
   # Define number of iterations
   n_iter = max_iter if not stop else stop
-  
-  t = time.time() # Begin timing
   
   # Loop through iterations
   for i in range(n_iter-1): 
@@ -66,4 +67,5 @@ def netconf(edges,priors,mod=np.eye(2),
     if verbose: print('{}\t{:.5e}\t\t{}\n'.format(i,diff1,diff2))
   
   # Return final beliefs and elapsed time
-  return B, time.time() - t
+  if verbose: print('Time elapsed: {} seconds'.format(time.time()-t))
+  return B, time
