@@ -8,7 +8,7 @@ import sklearn as skl
 import shapely.geometry as sg
 import matplotlib.pyplot as plt
 import sklearn.model_selection as skms
-from sklearn.neighbors import kneighbors_graph
+from sklearn.neighbors import BallTree, kneighbors_graph
 
 def create_map(lat, lon, zoom):
   return ipl.Map(basemap=ipl.basemaps.OpenStreetMap.Mapnik, center=[lat, lon], zoom=zoom, scroll_wheel_zoom=True)
@@ -98,13 +98,13 @@ def ifg_to_df(ifgFile, polygon):
   named = croppedIfg.rename('ifg')
   return named.to_dataframe().dropna(subset=['ifg']), poly
 
-def init_beliefs(df, columns, defaultBelief=0.5):
+def init_beliefs(df, columns, initBeliefs=[0.5,0.5]):
   coords = np.concatenate(np.array(df.axes[0]))
-  return gpd.GeoDataFrame(pd.DataFrame(np.concatenate((np.ones([len(df),len(columns)-1])*defaultBelief, np.array(df[columns[-1]]).reshape(-1,1)), axis=1), columns = columns),
+  return gpd.GeoDataFrame(pd.DataFrame(np.concatenate((np.ones([len(df),len(columns)-1])*initBeliefs, np.array(df[columns[-1]]).reshape(-1,1)), axis=1), columns = columns),
                           geometry=gpd.points_from_xy(coords[1::2], coords[0::2]),
                           crs={'init': 'epsg:4326'})
                              
-def train_test_split(gdf, poly, column, testSplit=0.3, randomState=42, shuffle=True):
+def train_test_split(gdf, poly, column, testSplit=0.3, randomState=1, shuffle=True):
   try: return skms.train_test_split(gdf[['geometry',column]][gdf.within(poly)], 
                                     gdf[column][gdf.within(poly)],
                                     test_size=testSplit, 
@@ -128,14 +128,18 @@ def prior_beliefs(nodes, values, beliefs, column, beliefColumns):
     nodes.loc[nodes[column] == list(values.keys())[i], beliefColumns] = 1-beliefs[i], beliefs[i]
   return np.array(nodes[beliefColumns])
 
-def create_edges(nodes, adjacent=True,values=False,neighbours=False):
+def create_edges(nodes, adjacent=True, geo_neighbors=4, values=False,neighbours=False):
   edges = []
   # Create edges between geographically adjacent nodes
   if adjacent:
-      x, l = len(nodes), len(nodes)
-      for i in nodes.index:
-          if not i % x == x-1: edges.append([i,i+1]) # Pixel to right (edge to left is equivalent to previous edge to right)
-          if not i > l-x-1: edges.append([i,i+x]) # Pixel below (edge above is accounted for is equivalent to previous edge below)
+    points = np.array([nodes.geometry.x,nodes.geometry.y]).transpose()
+    tree = BallTree(points, leaf_size=15, metric='haversine')
+    _, ind = tree.query(points, k=geo_neighbors+1)
+    for i in np.arange(1,ind.shape[1]):
+        edges = edges + np.ndarray.tolist(np.array([ind[:,0],ind[:,i]]).transpose())
+    edges = np.array(edges)
+    edges.sort(axis=1)
+    edges = np.ndarray.tolist(np.unique(edges, axis=0))
 
   # Create edges between most similar phase change pixels
   if values:
@@ -166,16 +170,18 @@ def confusion_matrix(axs, y_true, yp_clf, classes):
       for j in range(len(classes)): text = axs[0].text(j, i, conf[i, j], ha="center", va="center", color="r")
   return axs
 
-def cross_entropy_metrics(axs, y_true, y_pred, classes, dmgThresh):
+def cross_entropy_metrics(axs, y_true, y_pred, classes, dmgThresh=0.5, initBelief=0.5):
     p1 = axs[1].hist(y_pred[(np.array(1-y_true)*y_pred).nonzero()[0]], range = [0,1], bins = 100, label = 'True '+classes[0], color = 'g', alpha = 0.5)
     if len(classes) > 1:
         p2 = axs[1].hist(y_pred[(np.array(y_true)*y_pred).nonzero()[0]], range = [0,1], bins = 100, label = 'True '+classes[1], color = 'r', alpha = 0.8)
-    axs[1].axvline(x=dmgThresh, color='k',linestyle='--', linewidth=1, label='Initial probability')
-    axs[1].set_title('Cross-Entropy loss: {}'.format(skl.metrics.log_loss(y_true, y_pred, labels=[0,1])))
+    axs[1].axvline(x=dmgThresh, color='k',linestyle='--', linewidth=1, label='Damage Threshold')
+    axs[1].axvline(x=initBelief, color='b',linestyle='--', linewidth=1, label='Initial probability')
+    log_loss = skl.metrics.log_loss(y_true, y_pred, labels=[0,1])
+    axs[1].set_title('Cross-Entropy loss: {}'.format(log_loss))
     axs[1].legend(loc='upper right'), axs[1].set_xlabel('Damage Probability'), axs[1].set_ylabel('Number of predictions')
     axs[1].text(dmgThresh/2, 0.6,'Undamaged\n Prediction', ha='center', va='center', transform=axs[1].transAxes)
     axs[1].text(dmgThresh+(1-dmgThresh)/2, 0.6,'Damaged\n Prediction', ha='center', va='center', transform=axs[1].transAxes)
-    return axs
+    return axs, log_loss
   
 def show_plot(): plt.show()
   
