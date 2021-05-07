@@ -21,20 +21,26 @@ def import_OSM_fps(buildingGeojson):
   buildings = gpd.read_file(buildingGeojson)
   return gpd.GeoDataFrame(buildings[['id','building','name']], geometry=buildings.geometry)
 
+# Extract coordinates from columns
+def get_coords(locations, mapPoints):
+    lats, lons = np.zeros([len(locations), 1]),  np.zeros([len(locations), 1])
+    for i in range(len(locations)):
+        loc = locations[i]
+        if type(loc) is float or (type(loc) is str and loc[0].isalpha()):
+            mp = mapPoints[i]
+            if type(mp) is str and mp[0].isdigit():
+                try: lats[i], lons[i] = mp.split(' ')[0], mp.split(' ')[1]
+                except: lats[i], lons[i] = mp.split(',')[0], mp.split(',')[1] # Deal with rogue commas instead of space
+        else: lats[i], lons[i] = loc.split(' ')[0], loc.split(' ')[1]
+    return lats, lons
+
+
 # Import GeoPal data, extract locations from columns and return geodataframe of located data
 def import_located_geopal_data(geopalCsv):
   allData = pd.read_csv(geopalCsv)
   # Extract locations from joint column in database
   locations, mapPoints = allData['get location - الموقع_w_2049198'], allData['point on map - الموقع على الخريطة_w_2049199']
-  lats, lons = np.zeros([len(locations), 1]),  np.zeros([len(locations), 1])
-  for i in range(len(locations)):
-      loc = locations[i]
-      if type(loc) is float or (type(loc) is str and loc[0].isalpha()):
-          mp = mapPoints[i]
-          if type(mp) is str and mp[0].isdigit():
-              try: lats[i], lons[i] = mp.split(' ')[0], mp.split(' ')[1]
-              except: lats[i], lons[i] = mp.split(',')[0], mp.split(',')[1] # Deal with rogue commas instead of space
-      else: lats[i], lons[i] = loc.split(' ')[0], loc.split(' ')[1]
+  lats, lons = get_coords(locations, mapPoints)
 
   # Extract columns of useful data
   data = pd.DataFrame({
@@ -54,6 +60,16 @@ def import_located_geopal_data(geopalCsv):
   # Filter for non located values
   return assessments[assessments.geometry.x != 0]
 
+# Append additional data from GeoPal
+def append_geopal_data(orig, filePath, decCol = 'decision', extractCoords = False, coordCols = ['get location - الموقع_w_2048240', 'point on map - الموقع على الخريطة_w_2048241']):
+    extraData = pd.read_csv(filePath)
+    if extractCoords: 
+        lats, lons = get_coords(extraData[coordCols[0]], extraData[coordCols[1]])
+    else:
+        lats, lons = extraData['Lat'], extraData['Lon']
+    new = orig.append(gpd.GeoDataFrame({'decision':extraData[decCol]}, geometry=gpd.points_from_xy(lons, lats), crs={'init': 'epsg:4326'}), ignore_index=True)
+    return new[new.geometry.x != 0]
+
 # Join geodataframes
 def join_gdfs(gdf1, gdf2, column):
   return gpd.sjoin(gdf1, gdf2, how="left", op='contains').dropna(subset=[column])
@@ -69,9 +85,12 @@ def to_geodata(gdf, color):
 
 # Plotting for building footprints with attached assessments
 def plot_assessments(gdf, mapName):
-  mapName.add_layer(to_geodata(gdf.loc[gdf['decision'] == 'GREEN (inspected) أخضر (تم دراسته)'],'green'))
-  mapName.add_layer(to_geodata(gdf.loc[gdf['decision'] == 'YELLOW (restricted use) أصفر (لا يصلح للسكن)'],'yellow'))
-  mapName.add_layer(to_geodata(gdf.loc[gdf['decision'] == 'RED (unsafe/evacuate) أحمر (غير آمن/للاخلاء)ء'],'red'))
+  mapName.add_layer(to_geodata(gdf.loc[gdf['decision'].str.contains('GREEN')],'green'))
+  mapName.add_layer(to_geodata(gdf.loc[gdf['decision'].str.contains('YELLOW')],'yellow'))
+  mapName.add_layer(to_geodata(gdf.loc[gdf['decision'].str.contains('RED')],'red'))
+#   mapName.add_layer(to_geodata(gdf.loc[gdf['decision'] == 'GREEN (inspected) أخضر (تم دراسته)'],'green'))
+#   mapName.add_layer(to_geodata(gdf.loc[gdf['decision'] == 'YELLOW (restricted use) أصفر (لا يصلح للسكن)'],'yellow'))
+#   mapName.add_layer(to_geodata(gdf.loc[gdf['decision'] == 'RED (unsafe/evacuate) أحمر (غير آمن/للاخلاء)ء'],'red'))
 
   if not 'l1' in globals(): # Add legend if forming map for first time
       l1 = ipl.LegendControl({"No Restrictions":"#008000", "Restricted Use":"#FFFF00", "Unsafe/Evacuated":"#FF0000", "No Decision":"#0000FF"}, name="Decision", position="bottomleft")
@@ -151,7 +170,8 @@ def create_edges(nodes, adjacent=True, geo_neighbors=4, values=False,neighbours=
   return np.array(edges)
 
 def get_labels(init, X_test, beliefs, values, column):
-  y_true = gpd.sjoin(init, X_test, how='left', op='within').dropna(subset=[column]).decision.map(values)
+  
+  y_true = gpd.sjoin(init, X_test, how='left', op='within').dropna(subset=[column]).decision.str.split(' ').str[0].map(values)
   y_pred = skl.preprocessing.normalize(beliefs[y_true.index], norm='l1')[:,1]
   return y_true, y_pred
 
