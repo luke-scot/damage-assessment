@@ -9,12 +9,22 @@ import shapely.geometry as sg
 import matplotlib.pyplot as plt
 import sklearn.model_selection as skms
 from sklearn.neighbors import BallTree, kneighbors_graph
+from matplotlib.colors import LogNorm
+from PIL import Image
 
 def create_map(lat, lon, zoom):
   return ipl.Map(basemap=ipl.basemaps.OpenStreetMap.Mapnik, center=[lat, lon], zoom=zoom, scroll_wheel_zoom=True)
 
 def create_subplots(rows, cols, figsize):
   return plt.subplots(rows, cols, figsize=figsize)
+
+def plot_image(file, ax, fig=False, title=False, log=None):
+    im = Image.open(file)
+    if log: log=LogNorm()
+    p = ax.imshow(np.array(im), norm=log)
+    if fig: fig.colorbar(p, ax=ax)
+    if title: ax.set_title(title)
+    return p
 
 # Import OSM building footprints from .geojson file and return geodataframe
 def import_OSM_fps(buildingGeojson):
@@ -88,9 +98,6 @@ def plot_assessments(gdf, mapName):
   mapName.add_layer(to_geodata(gdf.loc[gdf['decision'].str.contains('GREEN')],'green'))
   mapName.add_layer(to_geodata(gdf.loc[gdf['decision'].str.contains('YELLOW')],'yellow'))
   mapName.add_layer(to_geodata(gdf.loc[gdf['decision'].str.contains('RED')],'red'))
-#   mapName.add_layer(to_geodata(gdf.loc[gdf['decision'] == 'GREEN (inspected) أخضر (تم دراسته)'],'green'))
-#   mapName.add_layer(to_geodata(gdf.loc[gdf['decision'] == 'YELLOW (restricted use) أصفر (لا يصلح للسكن)'],'yellow'))
-#   mapName.add_layer(to_geodata(gdf.loc[gdf['decision'] == 'RED (unsafe/evacuate) أحمر (غير آمن/للاخلاء)ء'],'red'))
 
   if not 'l1' in globals(): # Add legend if forming map for first time
       l1 = ipl.LegendControl({"No Restrictions":"#008000", "Restricted Use":"#FFFF00", "Unsafe/Evacuated":"#FF0000", "No Decision":"#0000FF"}, name="Decision", position="bottomleft")
@@ -104,40 +111,64 @@ def draw_polygon(gdf, mapName, stdTest=False):
   mapName.add_layer(testPoly)
   return mapName, testPoly
 
-## Import interferogram and format into dataframe
-def ifg_to_df(ifgFile, polygon):
-  # Import interferogram
-  wholeIfg = rxr.open_rasterio(ifgFile, masked=True).squeeze()
-  # Crop ifg
-  try: poly = sg.Polygon([[p['lng'], p['lat']] for p in polygon.locations[0]])
-  except: poly = sg.Polygon([[p[1],p[0]] for p in polygon.locations])
-  extent = gpd.GeoSeries([poly])
-  croppedIfg = wholeIfg.rio.clip(extent.geometry.apply(sg.mapping), extent.crs)
+## Import tif image and format into dataframe
+def image_to_df(imgFile, label='label', poly=False):
+  # Import image
+  img = rxr.open_rasterio(imgFile, masked=True).squeeze()
+  # Crop image if polygon supplied
+  if poly:
+      polygon = poly
+      try: poly = sg.Polygon([[p['lng'], p['lat']] for p in polygon.locations[0]])
+      except: poly = sg.Polygon([[p[1],p[0]] for p in polygon.locations])
+      extent = gpd.GeoSeries([poly])
+      img = img.rio.clip(extent.geometry.apply(sg.mapping), extent.crs)
   # Convert to df
-  named = croppedIfg.rename('ifg')
-  return named.to_dataframe().dropna(subset=['ifg']), poly
+  named = img.rename(label)
+  return named.to_dataframe().dropna(subset=[label]), poly
 
-def init_beliefs(df, columns, initBeliefs=[0.5,0.5]):
+def init_beliefs(df, columns, initBeliefs=[0.5,0.5], crs='epsg:4326'):
   coords = np.concatenate(np.array(df.axes[0]))
   return gpd.GeoDataFrame(pd.DataFrame(np.concatenate((np.ones([len(df),len(columns)-1])*initBeliefs, np.array(df[columns[-1]]).reshape(-1,1)), axis=1), columns = columns),
                           geometry=gpd.points_from_xy(coords[1::2], coords[0::2]),
-                          crs={'init': 'epsg:4326'})
+                          crs={'init': crs})
+
+# Pandas dataframe to formatted geodataframe
+def df_to_gdf(df, columns, crs='epsg:4326', reIndex=False):
+  coords = np.concatenate(np.array(df.axes[0]))
+  gdf = gpd.GeoDataFrame(df[columns[:]], columns = columns, geometry=gpd.points_from_xy(coords[1::2], coords[0::2]),crs={'init': crs})
+  if reIndex:
+    gdf = gdf.reset_index()
+    del gdf['x']
+    del gdf['y']
+  return gdf
                              
-def train_test_split(gdf, poly, column, testSplit=0.3, randomState=1, shuffle=True):
-  try: return skms.train_test_split(gdf[['geometry',column]][gdf.within(poly)], 
+def train_test_split(gdf, column, poly=False, testSplit=0.3, randomState=1, shuffle=True):
+    try: 
+        if poly: return skms.train_test_split(gdf[['geometry',column]][gdf.within(poly)], 
                                     gdf[column][gdf.within(poly)],
                                     test_size=testSplit, 
                                     random_state=randomState, 
                                     shuffle=shuffle, 
                                     stratify = gdf[column][gdf.within(poly)])
-  except ValueError:
-    print('Train/Test set stratification not possible due to less than 2 members from smallest class.')
-    return skms.train_test_split(gdf[['geometry',column]][gdf.within(poly)], 
+        else: return skms.train_test_split(gdf[['geometry',column]], 
+                                    gdf[column],
+                                    test_size=testSplit, 
+                                    random_state=randomState, 
+                                    shuffle=shuffle, 
+                                    stratify = gdf[column])
+    except ValueError:
+        print('Train/Test set stratification not possible due to less than 2 members from smallest class.')
+        if poly: return skms.train_test_split(gdf[['geometry',column]][gdf.within(poly)], 
                                     gdf[column][gdf.within(poly)],
                                     test_size=testSplit, 
                                     random_state=randomState, 
                                     shuffle=shuffle)
-                             
+        else: return skms.train_test_split(gdf[['geometry',column]], 
+                                    gdf[column],
+                                    test_size=testSplit, 
+                                    random_state=randomState, 
+                                    shuffle=shuffle)
+
 def create_nodes(init, X_train):
   nodes = gpd.sjoin(init, X_train, how='left', op='within')
   return nodes[~nodes.index.duplicated(keep='first')]
@@ -169,11 +200,11 @@ def create_edges(nodes, adjacent=True, geo_neighbors=4, values=False,neighbours=
                                                                   include_self=False).nonzero()).reshape(2,-1).transpose())
   return np.array(edges)
 
-def get_labels(init, X_test, beliefs, values, column):
-  
-  y_true = gpd.sjoin(init, X_test, how='left', op='within').dropna(subset=[column]).decision.str.split(' ').str[0].map(values)
-  y_pred = skl.preprocessing.normalize(beliefs[y_true.index], norm='l1')[:,1]
-  return y_true, y_pred
+def get_labels(init, X_test, beliefs, values, column, splitString=False):
+    if splitString: y_true = gpd.sjoin(init, X_test, how='left', op='within').dropna(subset=[column]).decision.str.split(' ').str[0].map(values)
+    else: y_true = gpd.sjoin(init, X_test, how='left', op='within').dropna(subset=[column])[column].map(values)
+    y_pred = skl.preprocessing.normalize(beliefs[y_true.index], norm='l1')[:,1]
+    return y_true, y_pred
 
 def class_metrics(y_true, y_pred, targets, threshold=0.5):
   yp_clf = skl.preprocessing.binarize(y_pred.reshape(-1, 1), threshold=threshold)
@@ -190,27 +221,32 @@ def confusion_matrix(axs, y_true, yp_clf, classes):
       for j in range(len(classes)): text = axs[0].text(j, i, conf[i, j], ha="center", va="center", color="r")
   return axs
 
+# Evaluate the cross entropy metrics and plot histogram of individual beliefs
 def cross_entropy_metrics(axs, y_true, y_pred, classes, dmgThresh=0.5, initBelief=0.5):
     p1 = axs[1].hist(y_pred[(np.array(1-y_true)*y_pred).nonzero()[0]], range = [0,1], bins = 100, label = 'True '+classes[0], color = 'g', alpha = 0.5)
     if len(classes) > 1:
-        p2 = axs[1].hist(y_pred[(np.array(y_true)*y_pred).nonzero()[0]], range = [0,1], bins = 100, label = 'True '+classes[1], color = 'r', alpha = 0.8)
+        p2 = axs[1].hist(y_pred[(np.array(y_true)*y_pred).nonzero()[0]], range = [0,1], bins = 100, label = 'True '+classes[1], color = 'r', alpha = 0.5)
     axs[1].axvline(x=dmgThresh, color='k',linestyle='--', linewidth=1, label='Damage Threshold')
     axs[1].axvline(x=initBelief, color='b',linestyle='--', linewidth=1, label='Initial probability')
     log_loss = skl.metrics.log_loss(y_true, y_pred, labels=[0,1])
     axs[1].set_title('Cross-Entropy loss: {}'.format(log_loss))
     axs[1].legend(loc='upper right'), axs[1].set_xlabel('Damage Probability'), axs[1].set_ylabel('Number of predictions')
-    axs[1].text(dmgThresh/2, 0.6,'Undamaged\n Prediction', ha='center', va='center', transform=axs[1].transAxes)
-    axs[1].text(dmgThresh+(1-dmgThresh)/2, 0.6,'Damaged\n Prediction', ha='center', va='center', transform=axs[1].transAxes)
+    axs[1].text(dmgThresh/2, 0.6, classes[0]+'\n Prediction', ha='center', va='center', transform=axs[1].transAxes)
+    axs[1].text(dmgThresh+(1-dmgThresh)/2, 0.6, classes[1]+'\n Prediction', ha='center', va='center', transform=axs[1].transAxes)
     return axs, log_loss
-  
+
+# Display matplotlib plot
 def show_plot(): plt.show()
   
+# Save matplotlib plot
 def save_plot(fig, filename): fig.savefig(filename)
 
+# Plot resulting beliefs from NetConf
 def belief_plot(nodes, ax, column, normalise = False):
     if normalise: column = skl.preprocessing.normalize(column, norm='l1')[:,1]
     return nodes.plot(ax=ax, column=column, cmap='RdYlGn_r', vmin=0,vmax=1)  
-  
+
+# Crop an interferogram
 def cropped_ifg(ifgFile,polygon):
     wholeIfg = rxr.open_rasterio(ifgFile, masked=True).squeeze()
     # Crop ifg
@@ -218,3 +254,14 @@ def cropped_ifg(ifgFile,polygon):
     except: poly = sg.Polygon([[p[1],p[0]] for p in polygon.locations])
     extent = gpd.GeoSeries([poly])
     return wholeIfg.rio.clip(extent.geometry.apply(sg.mapping), extent.crs)
+
+# Create an ipyleaflet polygon from properties
+def create_ipl_polygon(locations, color="yellow", fill_color="yellow", transform=False):
+    return ipl.Polygon(locations = locations, color=color, fill_color=fill_color, transform=transform)
+  
+# Group classes of labels according to classes matrix (1 row per class - [min val, max val])
+def group_classes(labels, classes, zeroNan=False):
+    for i in range(len(classes)):
+        if zeroNan: np.where((labels == 0), np.nan, labels)
+        labels = np.where((labels >= classes[i][0]) & (labels <= classes[i][1]), i, labels)
+    return labels 

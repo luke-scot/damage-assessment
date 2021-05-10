@@ -46,7 +46,7 @@ def netconf(edges,priors,mod=np.eye(2),
   M2 = np.dot(M,M1)
   
   # Add headers for verbose columns
-  if verbose: print('It\tmax{del(B)}\tdel(label)\n')
+  if verbose: print('It\tLoss\tLabel change\n')
   
   # Define number of iterations
   n_iter = max_iter if not stop else stop
