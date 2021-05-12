@@ -196,7 +196,7 @@ def create_edges(nodes, adjacent=True, geo_neighbors=4, values=False,neighbours=
     for i in range(len(values)):
       edges = edges + np.ndarray.tolist(np.array(kneighbors_graph(np.array(nodes[values[i]]).reshape(-1,1),
                                                                   neighbours[i], 
-                                                                  mode='connectivity', 
+                                                                  mode='connectivity',
                                                                   include_self=False).nonzero()).reshape(2,-1).transpose())
   return np.array(edges)
 
