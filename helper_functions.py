@@ -126,11 +126,15 @@ def image_to_df(imgFile, label='label', poly=False):
   named = img.rename(label)
   return named.to_dataframe().dropna(subset=[label]), poly
 
+
 def init_beliefs(df, columns, initBeliefs=[0.5,0.5], crs='epsg:4326'):
-  coords = np.concatenate(np.array(df.axes[0]))
-  return gpd.GeoDataFrame(pd.DataFrame(np.concatenate((np.ones([len(df),len(columns)-1])*initBeliefs, np.array(df[columns[-1]]).reshape(-1,1)), axis=1), columns = columns),
-                          geometry=gpd.points_from_xy(coords[1::2], coords[0::2]),
-                          crs={'init': crs})
+    for i, val in enumerate(columns): df[val] = np.ones([len(df)])*initBeliefs[i]
+    return df_to_gdf(df,df.columns,crs=crs,reIndex=True) 
+# def init_beliefs(df, columns, initBeliefs=[0.5,0.5], crs='epsg:4326'):
+#   coords = np.concatenate(np.array(df.axes[0]))
+#   return gpd.GeoDataFrame(pd.DataFrame(np.concatenate((np.ones([len(df),len(columns)-1])*initBeliefs, np.array(df[columns[-1]]).reshape(-1,1)), axis=1), columns = columns),
+#                           geometry=gpd.points_from_xy(coords[1::2], coords[0::2]),
+#                           crs={'init': crs})
 
 # Pandas dataframe to formatted geodataframe
 def df_to_gdf(df, columns, crs='epsg:4326', reIndex=False):
@@ -178,27 +182,26 @@ def prior_beliefs(nodes, values, beliefs, column, beliefColumns):
     nodes.loc[nodes[column] == list(values.keys())[i], beliefColumns] = 1-beliefs[i], beliefs[i]
   return np.array(nodes[beliefColumns])
 
-def create_edges(nodes, adjacent=True, geo_neighbors=4, values=False,neighbours=False):
-  edges = []
-  # Create edges between geographically adjacent nodes
-  if adjacent:
-    points = np.array([nodes.geometry.x,nodes.geometry.y]).transpose()
-    tree = BallTree(points, leaf_size=15, metric='haversine')
-    _, ind = tree.query(points, k=geo_neighbors+1)
-    for i in np.arange(1,ind.shape[1]):
-        edges = edges + np.ndarray.tolist(np.array([ind[:,0],ind[:,i]]).transpose())
-    edges = np.array(edges)
-    edges.sort(axis=1)
-    edges = np.ndarray.tolist(np.unique(edges, axis=0))
+def create_edges(nodes, adjacent=True, geo_neighbors=4, values=False, neighbours=False):
+    edges = []
+    # Create edges between geographically adjacent nodes
+    if adjacent:
+        points = np.array([nodes.geometry.x,nodes.geometry.y]).transpose()
+        tree = BallTree(points, leaf_size=15, metric='haversine')
+        _, ind = tree.query(points, k=geo_neighbors+1)
+        for i in np.arange(1,ind.shape[1]):
+            edges = edges + np.ndarray.tolist(np.array([ind[:,0],ind[:,i]]).transpose())
+        edges = np.array(edges)
+        edges.sort(axis=1)
+        edges = np.ndarray.tolist(np.unique(edges, axis=0))
 
-  # Create edges between most similar phase change pixels
-  if values:
-    for i in range(len(values)):
-      edges = edges + np.ndarray.tolist(np.array(kneighbors_graph(np.array(nodes[values[i]]).reshape(-1,1),
-                                                                  neighbours[i], 
-                                                                  mode='connectivity',
-                                                                  include_self=False).nonzero()).reshape(2,-1).transpose())
-  return np.array(edges)
+    # Create edges between most similar phase change pixels
+    if values is not False:
+        edges = edges + np.ndarray.tolist(np.array(kneighbors_graph(np.array(nodes[values]),2,mode='connectivity',include_self=False).nonzero()).reshape(2,-1).transpose())
+    return np.array(edges)
+#   if values:
+#     for i in range(len(values)):
+#       edges = edges + np.ndarray.tolist(np.array(kneighbors_graph(np.array(nodes[values[i]]).reshape(-1,1))
 
 def get_labels(init, X_test, beliefs, values, column, splitString=False):
     if splitString: y_true = gpd.sjoin(init, X_test, how='left', op='within').dropna(subset=[column]).decision.str.split(' ').str[0].map(values)

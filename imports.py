@@ -1,6 +1,7 @@
 import rasterio
 import ground_truth
 import pandas as pd
+import numpy as np
 from rasterio.windows import from_bounds
 from rasterio.enums import Resampling
 from rasterio.io import MemoryFile
@@ -46,9 +47,11 @@ def resample_tif(tif, scale_factor, mode=Resampling.bilinear):
     memory_file.write(data)
     return memory_file
 
-import pandas as pd
-def raster_to_df(file, value='class', single = True, crop = False):
-    arr = ip.raster_to_array(file, crop)
-    if single: df = pd.DataFrame(arr[0]).stack().rename_axis(['y', 'x']).reset_index(name=value).set_index(['y','x'])
-    else: df = pd.DataFrame(arr.reshape(len(arr),-1)).stack().rename_axis(['y', 'x']).reset_index(name=value).set_index(['y','x'])
+def raster_to_df(file, value='class', multidims = False, crop = False):
+    arr = raster_to_array(file, crop)
+    if multidims:
+        df = pd.DataFrame(arr.reshape(-1,len(arr)))
+        df['x'], df['y'] = np.tile(np.arange(arr.shape[2]),arr.shape[1]), np.repeat(range(arr.shape[1]),arr.shape[2])
+        df = df.set_index(['y','x'])
+    else: df = pd.DataFrame(arr[0]).stack().rename_axis(['y', 'x']).reset_index(name=value).set_index(['y','x'])
     return df, arr
