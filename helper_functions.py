@@ -11,6 +11,8 @@ import sklearn.model_selection as skms
 from sklearn.neighbors import BallTree, kneighbors_graph
 from matplotlib.colors import LogNorm
 from PIL import Image
+from sklearn.decomposition import PCA
+from sklearn.cluster import KMeans
 
 def create_map(lat, lon, zoom):
   return ipl.Map(basemap=ipl.basemaps.OpenStreetMap.Mapnik, center=[lat, lon], zoom=zoom, scroll_wheel_zoom=True)
@@ -263,8 +265,16 @@ def create_ipl_polygon(locations, color="yellow", fill_color="yellow", transform
     return ipl.Polygon(locations = locations, color=color, fill_color=fill_color, transform=transform)
   
 # Group classes of labels according to classes matrix (1 row per class - [min val, max val])
-def group_classes(labels, classes, zeroNan=False):
+def group_classes(labels, classes, zeroNan=False, intervals = False):
     for i in range(len(classes)):
         if zeroNan: np.where((labels == 0), np.nan, labels)
-        labels = np.where((labels >= classes[i][0]) & (labels <= classes[i][1]), i, labels)
+        if intervals: labels = np.where((labels >= classes[i][0]) & (labels <= classes[i][1]), i, labels)
+        else: labels = np.where((pd.Series(labels).isin(classes[i])), i, labels)
     return labels 
+
+def run_PCA(X, n=2):
+  pca = PCA(n_components=2)
+  return pca.fit(X)
+
+def run_kmeans(X, clusters=2, rs=0):
+    return KMeans(n_clusters=clusters, random_state=rs).fit(X)
