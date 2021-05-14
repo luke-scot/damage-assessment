@@ -184,7 +184,7 @@ def prior_beliefs(nodes, values, beliefs, column, beliefColumns):
     nodes.loc[nodes[column] == list(values.keys())[i], beliefColumns] = 1-beliefs[i], beliefs[i]
   return np.array(nodes[beliefColumns])
 
-def create_edges(nodes, adjacent=True, geo_neighbors=4, values=False, neighbours=2):
+def create_edges(nodes, adjacent=True, geo_neighbors=4, values=False, neighbours=[2]):
     edges = []
     # Create edges between geographically adjacent nodes
     if adjacent:
@@ -199,7 +199,8 @@ def create_edges(nodes, adjacent=True, geo_neighbors=4, values=False, neighbours
 
     # Create edges between most similar phase change pixels
     if values is not False:
-        edges = edges + np.ndarray.tolist(np.array(kneighbors_graph(np.array(nodes[values]),neighbours,mode='connectivity',include_self=False).nonzero()).reshape(2,-1).transpose())
+        for i, val in enumerate(values):
+            edges = edges + np.ndarray.tolist(np.array(kneighbors_graph(np.array(nodes[val]).reshape(-1,len(list(val))),neighbours[i],mode='connectivity',include_self=False).nonzero()).reshape(2,-1).transpose())
     return np.array(edges)
 #   if values:
 #     for i in range(len(values)):
@@ -278,7 +279,8 @@ def run_PCA(X, n=2):
 
 def run_kmeans(X, clusters=2, rs=0):
     return KMeans(n_clusters=clusters, random_state=rs).fit(X)
-  
+
+# Pre-process hyperspectral data
 def run_cluster(X, labels, clType = 'mean', nCls = 2, skip=1):
     # Run clustering on all data
     if clType is 'all': 
@@ -296,3 +298,6 @@ def run_cluster(X, labels, clType = 'mean', nCls = 2, skip=1):
         kmeans = run_kmeans(a.groupby(['label']).mean().values, clusters=nCls)
     classes = [np.where(kmeans.labels_==0)[0][np.where(kmeans.labels_==0)[0].nonzero()[0]],np.where(kmeans.labels_==1)[0][np.where(kmeans.labels_==1)[0].nonzero()[0]]]
     return classes, kmeans
+  
+def concat_dfs(dfs, axis=1):
+    return pd.concat(dfs, axis=axis)
