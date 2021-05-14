@@ -20,3 +20,11 @@ gdown -O beirutPrePreExplosionIfg.tif "https://drive.google.com/uc?export=downlo
 # Post Explosion
 gdown -O beirutPrePostExplosionIfg.tif "https://drive.google.com/uc?export=download&id=1S_WYEJ6ikL6wskvoO7G3xGh-Lwb7EqlF"
 
+# Bourj Hammoud Data
+gdown -O bourjHammoud.csv "https://drive.google.com/uc?export=download&id=1t_xpbzcO2svWJnO8FLd0yS3bvNFqu0Jo"
+
+# Old survey forms
+gdown -O SurveyForms.csv "https://drive.google.com/uc?export=download&id=1z1hEYVkv2FWga3jCyaxoZ9iyMPWOJFuA"
+
+# Manually Mapped Data
+gdown -O manualDamageClasses.csv "https://drive.google.com/uc?export=download&id=11IYcRwrYVJbOWWP7JGDS4EKyTaggSWx5"
