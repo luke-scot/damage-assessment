@@ -21,7 +21,6 @@ def edges_to_adjmat(edges):
     adj_mat = csr_matrix((np.ones(len(edges[:,0])),(edges[:,0],edges[:,1])),shape=(n,n)).toarray()
     return adj_mat
 
-  
 ## Run netConf belief propagation
 ## Input variables
 # edges - csv of 
@@ -32,7 +31,7 @@ def edges_to_adjmat(edges):
 # verbose - False - output loss for each iteration
 # max_iter - 100 - maximum iterations
 # limit - 1e-4 - loss threshold for early stop 
-def netconf(edges,priors,mod=np.eye(2),
+def netconf(edges,priors,mod=False,
             ep=0.5,stop=0,verbose=False,max_iter=100,limit=1e-4):  
   # Define initial variables
   if verbose: print('Nodes: {}, Edges: {}'.format(len(priors),len(edges)))
@@ -41,7 +40,7 @@ def netconf(edges,priors,mod=np.eye(2),
   l, diff1 = np.zeros(N), 1
   adj_mat = edges_to_adjmat(edges)
   v, D = np.abs(eigsh(adj_mat,1)[0][0]), np.diag(sum(adj_mat))
-  M = np.dot(np.divide(ep,v),mod)
+  M = np.dot(np.divide(ep,v), mod if mod is not False else np.eye(priors.shape[1]))
   M1 = np.dot(M,np.linalg.pinv(np.eye(k)-np.dot(M,M)))
   M2 = np.dot(M,M1)
   
