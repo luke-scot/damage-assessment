@@ -129,14 +129,11 @@ def image_to_df(imgFile, label='label', poly=False):
   return named.to_dataframe().dropna(subset=[label]), poly
 
 
-def init_beliefs(df, columns, initBeliefs=[0.5,0.5], crs='epsg:4326'):
+def init_beliefs(df, classes=2, columns=False, initBeliefs=False, crs='epsg:4326'):
+    if columns is False: columns = ['cl'+str(s) for s in range(classes)] # Default column headers 
+    if initBeliefs is False: initBeliefs = np.ones(len(columns))*(1/len(columns))
     for i, val in enumerate(columns): df[val] = np.ones([len(df)])*initBeliefs[i]
     return df_to_gdf(df,df.columns,crs=crs,reIndex=True) 
-# def init_beliefs(df, columns, initBeliefs=[0.5,0.5], crs='epsg:4326'):
-#   coords = np.concatenate(np.array(df.axes[0]))
-#   return gpd.GeoDataFrame(pd.DataFrame(np.concatenate((np.ones([len(df),len(columns)-1])*initBeliefs, np.array(df[columns[-1]]).reshape(-1,1)), axis=1), columns = columns),
-#                           geometry=gpd.points_from_xy(coords[1::2], coords[0::2]),
-#                           crs={'init': crs})
 
 # Pandas dataframe to formatted geodataframe
 def df_to_gdf(df, columns, crs='epsg:4326', reIndex=False):
@@ -179,10 +176,11 @@ def create_nodes(init, X_train):
   nodes = gpd.sjoin(init, X_train, how='left', op='within')
   return nodes[~nodes.index.duplicated(keep='first')]
                           
-def prior_beliefs(nodes, values, beliefs, column, beliefColumns):
-  for i in range(len(beliefs)):
-    nodes.loc[nodes[column] == list(values.keys())[i], beliefColumns] = 1-beliefs[i], beliefs[i]
-  return np.array(nodes[beliefColumns])
+def prior_beliefs(nodes, beliefColumns, beliefs=[0,1], column='class'):
+    oneHot = np.eye(len(beliefColumns))*beliefs[1]+np.ones(len(beliefColumns))*beliefs[0]-np.eye(len(beliefColumns))*beliefs[0]
+    for i, cl in enumerate(beliefColumns):
+        nodes.loc[nodes[column] == i, beliefColumns] = oneHot[i,:]
+    return np.array(nodes[beliefColumns])
 
 def create_edges(nodes, adjacent=True, geo_neighbors=4, values=False, neighbours=[2]):
     edges = []
@@ -206,25 +204,30 @@ def create_edges(nodes, adjacent=True, geo_neighbors=4, values=False, neighbours
 #     for i in range(len(values)):
 #       edges = edges + np.ndarray.tolist(np.array(kneighbors_graph(np.array(nodes[values[i]]).reshape(-1,1))
 
-def get_labels(init, X_test, beliefs, values, column, splitString=False):
-    if splitString: y_true = gpd.sjoin(init, X_test, how='left', op='within').dropna(subset=[column]).decision.str.split(' ').str[0].map(values)
-    else: y_true = gpd.sjoin(init, X_test, how='left', op='within').dropna(subset=[column])[column].map(values)
-    y_pred = skl.preprocessing.normalize(beliefs[y_true.index], norm='l1')[:,1]
+def get_labels(init, X_test, beliefs, column, values = False, splitString=False):
+    if splitString: y_true = gpd.sjoin(init, X_test, how='left', op='within').dropna(subset=[column]).decision.str.split(' ').str[0]
+    else: y_true = gpd.sjoin(init, X_test, how='left', op='within').dropna(subset=[column])[column]
+    if values: y_true = y_true.map(values)
+    y_pred = skl.preprocessing.normalize(beliefs[y_true.index], norm='l1')
     return y_true, y_pred
 
-def class_metrics(y_true, y_pred, targets, threshold=0.5):
-  yp_clf = skl.preprocessing.binarize(y_pred.reshape(-1, 1), threshold=threshold)
-  classes = targets[:len(np.unique(np.append(yp_clf, np.array(y_true))))]
-  print(skl.metrics.classification_report(y_true, yp_clf, target_names=classes, zero_division=0))
-  return yp_clf, classes
+def class_metrics(y_true, y_pred, targets=False, threshold=0.5):
+    yp_clf = np.argmax(y_pred, axis=1)
+    classes = [str(i) for i in np.unique(np.append(yp_clf, np.array(y_true)))]
+    if targets is not False: classes = targets[classes]
+    if len(classes)==2: yp_clf = skl.preprocessing.binarize(y_pred.reshape(-1, 1), threshold=threshold)
+    print(skl.metrics.classification_report(y_true, yp_clf, target_names=classes, zero_division=0))
+    return yp_clf, classes
 
 def confusion_matrix(axs, y_true, yp_clf, classes):
   conf = skl.metrics.confusion_matrix(y_true, yp_clf)
-  axs[0].imshow(conf, interpolation='nearest')
-  axs[0].set_xticks(range(len(classes))), axs[0].set_xticklabels(classes), axs[0].set_yticks(range(len(classes))), axs[0].set_yticklabels(classes)
-  axs[0].set_xlabel('Predicted Class'), axs[0].set_ylabel('True Class'), axs[0].set_title('Confusion Matrix')
+  try: ax = axs[0]
+  except: ax = axs
+  ax.imshow(conf, interpolation='nearest')
+  ax.set_xticks(range(len(classes))), ax.set_xticklabels(classes), ax.set_yticks(range(len(classes))), ax.set_yticklabels(classes)
+  ax.set_xlabel('Predicted Class'), ax.set_ylabel('True Class'), ax.set_title('Confusion Matrix')
   for i in range(len(classes)): 
-      for j in range(len(classes)): text = axs[0].text(j, i, conf[i, j], ha="center", va="center", color="r")
+      for j in range(len(classes)): text = ax.text(j, i, conf[i, j], ha="center", va="center", color="r")
   return axs
 
 # Evaluate the cross entropy metrics and plot histogram of individual beliefs
@@ -281,23 +284,23 @@ def run_kmeans(X, clusters=2, rs=0):
     return KMeans(n_clusters=clusters, random_state=rs).fit(X)
 
 # Pre-process hyperspectral data
-def run_cluster(X, labels, clType = 'mean', nCls = 2, skip=1):
+def run_cluster(X, labels, clType = 'mean', nClasses = 2):
     # Run clustering on all data
     if clType is 'all': 
-        k1 = run_kmeans(X, clusters=nCls)
-        a = pd.DataFrame(np.concatenate((k1.labels_.reshape(1,-1), labels[::skip].values.reshape(1,-1))).transpose(),columns=['group','label'])
-        b = a.groupby(['label','group']).size()
-        print(b)
-        kmeans = run_kmeans(np.array([b.values[0::2]/b.values[1::2]]).transpose(),nCls)
-        if len(b) != 42: print('All classes not assigned to each cluster, modify function')
+        k1 = run_kmeans(X, clusters=nClasses)
+        a = pd.DataFrame(np.concatenate((k1.labels_.reshape(1,-1), labels.values.reshape(1,-1))).transpose(),columns=['group','label'])
+        kmeans = a.groupby(['label','group']).size()
+        b = np.zeros([len(labels['class'].unique())+1,nClasses])
+        for i in kmeans.axes[0]: b[i] = kmeans[i] 
+        classes = run_kmeans(b[1:],nClasses).labels_
       
     # Run clustering on means of each class
     elif clType is 'mean': 
         a = pd.DataFrame(X)
-        a['label']=labels[::skip].values.reshape(-1,1)
-        kmeans = run_kmeans(a.groupby(['label']).mean().values, clusters=nCls)
-    classes = [np.where(kmeans.labels_==0)[0][np.where(kmeans.labels_==0)[0].nonzero()[0]],np.where(kmeans.labels_==1)[0][np.where(kmeans.labels_==1)[0].nonzero()[0]]]
-    return classes, kmeans
+        a['label']=labels.values.reshape(-1,1)
+        kmeans = run_kmeans(a.groupby(['label']).mean().values, clusters=nClasses)
+        classes = kmeans.labels_
+    return kmeans, classes
   
 def concat_dfs(dfs, axis=1):
     return pd.concat(dfs, axis=axis)
