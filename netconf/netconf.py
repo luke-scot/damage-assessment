@@ -21,7 +21,6 @@ def edges_to_adjmat(edges):
     adj_mat = csr_matrix((np.ones(len(edges[:,0])),(edges[:,0],edges[:,1])),shape=(n,n)).toarray()
     return adj_mat
 
-  
 ## Run netConf belief propagation
 ## Input variables
 # edges - csv of 
