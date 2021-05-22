@@ -115,9 +115,9 @@ def cross_entropy_metrics(axs, y_true, y_pred, classes, dmgThresh=0.5, initBelie
 # Cross entropy for multi-class with box plots
 def cross_entropy_multiclass(ax, y_true, y_pred):
     a = []
-    for i in np.sort(y_true.unique()):
-        a.append(y_pred[y_true==i][:,int(i)])
+    for i, val in enumerate(np.sort(np.unique(y_true))):
+        a.append(y_pred[:,int(i)].reshape(-1,1)[np.array([y_true==val])[0]])
     ax.set_title('Resulting Multi-Class Beliefs'), ax.set_xlabel('Classes'), ax.set_ylabel('Probability')
     ax.boxplot(a)
-    ax.hlines(1/len(y_true.unique()),1,len(y_true.unique()), colors='r', linestyles='dashed', label='A priori')
+    ax.hlines(1/len(np.unique(y_true)),1,len(np.unique(y_true)), colors='r', linestyles='dashed', label='A priori')
     return ax

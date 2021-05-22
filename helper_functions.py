@@ -26,6 +26,9 @@ def concat_dfs(dfs, axis=1):
 # Join geodataframes
 def join_gdfs(gdf1, gdf2, column):
   return gpd.sjoin(gdf1, gdf2, how="left", op='contains').dropna(subset=[column])
+
+def flatten_list(listIn):
+  return list(np.array(listIn).flatten())
   
 #--------------------------------------------------------------#
 """Class clustering functions"""
@@ -39,23 +42,22 @@ def run_kmeans(X, clusters=2, rs=0):
     return KMeans(n_clusters=clusters, random_state=rs).fit(X)
 
 # Pre-process hyperspectral data
-def run_cluster(X, labels, clType = 'mean', nClasses = 2):
+def run_cluster(X, labels, meanCluster = True, nClasses = 2):
     # Run clustering on all data
-    if clType is 'all': 
-        k1 = run_kmeans(X, clusters=nClasses)
-        a = pd.DataFrame(np.concatenate((k1.labels_.reshape(1,-1), labels.values.reshape(1,-1))).transpose(),columns=['group','label'])
-        kmeans = a.groupby(['label','group']).size()
-        b = np.zeros([len(labels['class'].unique())+1,nClasses])
-        for i in kmeans.axes[0]: b[i] = kmeans[i] 
-        classes = run_kmeans(b[1:],nClasses).labels_
-      
-    # Run clustering on means of each class
-    elif clType is 'mean': 
+    if meanCluster:
         a = pd.DataFrame(X)
         a['label']=labels.values.reshape(-1,1)
         kmeans = run_kmeans(a.groupby(['label']).mean().values, clusters=nClasses)
         classes = kmeans.labels_
-    return kmeans, classes
+        initLabels = list(np.array(a.groupby(['label']).mean().axes[0]))
+    else:
+        k1 = run_kmeans(X, clusters=nClasses)
+        a = pd.DataFrame(np.concatenate((k1.labels_.reshape(1,-1), labels.values.reshape(1,-1))).transpose(),columns=['group','label'])
+        kmeans = a.groupby(['label','group']).size()
+        b = np.zeros([len(labels.unique())+1,nClasses])
+        for i, val in enumerate(kmeans.axes[0]): b[i] = kmeans[i] 
+        classes = run_kmeans(b[1:],nClasses).labels_
+    return kmeans, classes, initLabels
 
 # Get default classes from original labels
 def default_classes(labels):
@@ -79,7 +81,8 @@ def group_classes(labels, classes, zeroNan=False, intervals = False):
     return labels 
 
 # Split data into train and test sets
-def train_test_split(gdf, column, poly=False, testSplit=0.3, randomState=1, shuffle=True):
+def train_test_split(gdf, column, poly=False, testSplit=0.3, randomState=1, shuffle=True, splitString=False):
+    if splitString: gdf[column]=gdf[column].str.split(' ').str[0]
     try: 
         if poly: return skms.train_test_split(gdf[['geometry',column]][gdf.within(poly)], 
                                     gdf[column][gdf.within(poly)],
@@ -112,10 +115,11 @@ def create_nodes(init, X_train):
   return nodes[~nodes.index.duplicated(keep='first')]
 
 # Extract prior beliefs from nodes as input to belief propagation
-def prior_beliefs(nodes, beliefColumns, beliefs=[0,1], column='class'):
+def prior_beliefs(nodes, beliefColumns, classNames=False, beliefs=[0,1], column='class'):
     oneHot = np.eye(len(beliefColumns))*beliefs[1]+np.ones(len(beliefColumns))*beliefs[0]-np.eye(len(beliefColumns))*beliefs[0]
     for i, cl in enumerate(beliefColumns):
-        nodes.loc[nodes[column] == i, beliefColumns] = oneHot[i,:]
+        match = i if cl == 'cl'+str(i) or (classNames is not False and len(classNames)==len(beliefColumns)) else cl
+        nodes.loc[nodes[column] == match, beliefColumns] = oneHot[i,:]
     return np.array(nodes[beliefColumns])
 
 # Create edges between nodes according to similarity
@@ -135,7 +139,8 @@ def create_edges(nodes, adjacent=True, geo_neighbors=4, values=False, neighbours
     # Create edges between most similar phase change pixels
     if values is not False:
         for i, val in enumerate(values):
-            edges = edges + np.ndarray.tolist(np.array(kneighbors_graph(np.array(nodes[val]).reshape(-1,len(list(val))),neighbours[i],mode='connectivity',include_self=False).nonzero()).reshape(2,-1).transpose())
+          edges = edges + np.ndarray.tolist(np.array(kneighbors_graph(np.array(nodes[val]).reshape(-1,len(np.array([val]))),neighbours[i],mode='connectivity',include_self=False).nonzero()).reshape(2,-1).transpose())
+#            edges = edges + np.ndarray.tolist(np.array(kneighbors_graph(np.array(nodes[val]).reshape(-1,len(list(val))),neighbours[i],mode='connectivity',include_self=False).nonzero()).reshape(2,-1).transpose())
     return np.array(edges)
   
 #---------------------------------------------#
@@ -146,13 +151,13 @@ def get_labels(init, X_test, beliefs, column, values = False, splitString=False)
     else: y_true = gpd.sjoin(init, X_test, how='left', op='within').dropna(subset=[column])[column]
     if values: y_true = y_true.map(values)
     y_pred = skl.preprocessing.normalize(beliefs[y_true.index], norm='l1')
-    return y_true, y_pred
+    return np.array(y_true).reshape(-1,1).astype(type(y_true.values[0])), y_pred
 
 # Obtain classification report for classes
-def class_metrics(y_true, y_pred, targets=False, threshold=0.5):
+def class_metrics(y_true, y_pred, classes=False, orig=False, threshold=0.5):
     yp_clf = np.argmax(y_pred, axis=1)
-    classes = [str(i) for i in np.unique(np.append(yp_clf, np.array(y_true)))]
-    if targets is not False: classes = targets[classes]
-    if len(classes)==2: yp_clf = skl.preprocessing.binarize(y_pred.reshape(-1, 1), threshold=threshold)
+    if classes is False: classes = [str(i) for i in np.unique(np.append(yp_clf, np.array(y_true)))]
+    elif classes is not orig: yp_clf=np.vectorize(dict(enumerate(classes)).get)(yp_clf)
+#     if len(classes)==2: yp_clf = skl.preprocessing.binarize(y_pred[:,1].reshape(-1,1), threshold=threshold)
     print(skl.metrics.classification_report(y_true, yp_clf, target_names=classes, zero_division=0))
     return yp_clf, classes
