@@ -4,11 +4,20 @@ import numpy as np
 import pandas as pd
 import rioxarray as rxr
 import geopandas as gpd
+import helper_functions as hf
 import shapely.geometry as sg
 from rasterio.io import MemoryFile
 from rasterio.enums import Resampling
 from rasterio.windows import from_bounds
 
+#----------------------------------------------------#
+"""Label Imports"""
+def shape_to_gdf(file, splitString = False, cn='decision', crs=False):
+    labels = gpd.read_file(file)
+    if crs: labels= labels.to_crs({'init': crs})
+    if splitString: labels[cn] = labels[cn].str.split(' ').str[0]
+    return labels
+  
 #-----------------------------------------------------#
 """Beirut Data imports"""
 # Import OSM building footprints from .geojson file and return geodataframe
@@ -134,3 +143,24 @@ def raster_to_df(file, value='class', multidims = False, crop = False):
         df = df.set_index(['y','x'])
     else: df = pd.DataFrame(arr[0]).stack().rename_axis(['y', 'x']).reset_index(name=value).set_index(['y','x'])
     return df, arr
+  
+#---------------------------------------------------------#
+"""High-Resolution Imports"""
+def img_to_gdf(file, poly=False, crs=False, label='img', columns=False, crsPoly='epsg:4326'):
+    # High-Resolution Imagery import
+    img = rxr.open_rasterio(file, masked=True).squeeze()
+    # Crop image if polygon supplied
+    if poly:
+        extent = hf.get_extent(poly, crsPoly=crsPoly, crs=crs)
+        img = img.rio.clip(extent.geometry.apply(sg.mapping))   
+    named = img.rename('img')
+    
+    # Convert to geodataframe
+    xm, ym = np.meshgrid(np.array(named.coords['x']), np.array(named.coords['y']))
+    mi = pd.MultiIndex.from_arrays([ym.flatten(),xm.flatten()],names=('y','x'))
+
+    # Convert to geodataframe with lat/long
+    df = pd.DataFrame(named.data.reshape(3,-1).transpose(), index=mi)
+    columns = df.columns if columns is False else columns
+    gdf = hf.df_to_gdf(df,columns,crs=crs, reIndex=True).to_crs({'init':crsPoly})
+    return gdf

@@ -40,16 +40,20 @@ def plot_assessments(gdf, mapName):
   mapName.add_layer(to_geodata(gdf.loc[gdf['decision'].str.contains('GREEN')],'green'))
   mapName.add_layer(to_geodata(gdf.loc[gdf['decision'].str.contains('YELLOW')],'yellow'))
   mapName.add_layer(to_geodata(gdf.loc[gdf['decision'].str.contains('RED')],'red'))
+  mapName.add_layer(to_geodata(gdf.loc[gdf['decision'].str.contains('TOTAL')],'maroon'))
+  mapName.add_layer(to_geodata(gdf.loc[gdf['decision'].str.contains('LAND')],'cyan'))
 
   if not 'l1' in globals(): # Add legend if forming map for first time
-      l1 = ipl.LegendControl({"No Restrictions":"#008000", "Restricted Use":"#FFFF00", "Unsafe/Evacuated":"#FF0000", "No Decision":"#0000FF"}, name="Decision", position="bottomleft")
+      l1 = ipl.LegendControl({"No Restrictions":"#008000", "Restricted Use":"#FFFF00", "Unsafe/Evacuated":"#FF0000", "Total Destruction":"#800000", "Land":"#00FFFF", "No Decision":"#0000FF"}, name="Decision", position="bottomleft")
       mapName.add_control(l1)
   return mapName
   
-def draw_polygon(gdf, mapName, stdTest=False):
+def draw_polygon(gdf, mapName, stdTest=False, southDev=0.012):
   bd = gdf.total_bounds
-  testPoly = ipl.Polygon(locations = [(bd[1]+0.012, bd[0]), (bd[1]+0.012, bd[2]-0.01), (bd[3], bd[2]-0.01),(bd[3], bd[0])], color="yellow", fill_color="yellow", transform=False if stdTest else True)
-
+  testPoly = ipl.Polygon(locations = [(bd[1]+southDev, bd[0]), (bd[1]+southDev, bd[2]), (bd[3], bd[2]),(bd[3], bd[0])],
+                         color="yellow",
+                         fill_color="yellow",
+                         transform=False if stdTest else True)
   mapName.add_layer(testPoly)
   return mapName, testPoly
 

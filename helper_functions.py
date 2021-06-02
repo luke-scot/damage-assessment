@@ -1,6 +1,7 @@
-import geopandas as gpd
-import pandas as pd
 import numpy as np
+import pandas as pd
+import geopandas as gpd
+import shapely.geometry as sg
 import sklearn as skl
 import sklearn.model_selection as skms
 from sklearn.cluster import KMeans
@@ -14,7 +15,7 @@ def df_to_gdf(df, columns, crs='epsg:4326', reIndex=False, invCoords=False):
   coords = np.concatenate(np.array(df.axes[0]))
   if invCoords: a,b = 0,1
   else: a,b =1,0
-  gdf = gpd.GeoDataFrame(df[columns[:]], columns = columns, geometry=gpd.points_from_xy(coords[a::2], coords[b::2]),crs={'init': crs})
+  gdf = gpd.GeoDataFrame(df[columns[:]], columns = columns, geometry=gpd.points_from_xy(coords[a::2], coords[b::2]),crs=crs)
   if reIndex:
     gdf = gdf.reset_index()
     del gdf['x']
@@ -31,7 +32,27 @@ def join_gdfs(gdf1, gdf2, column):
 
 def flatten_list(listIn):
   return list(np.array(listIn).flatten())
-  
+
+def subtract_gdfs(gdf1, gdf2, geometry='geometry'):
+  gdf = gdf1-gdf2
+  gdf[geometry]=gdf2[geometry]
+  gdf.crs = gdf2.crs
+  return gdf
+
+#-------------------------------------------------------------#
+"""Polygon Manipulation functions"""
+def get_polygon(poly, conv = False):
+    try: return sg.Polygon([[p['lat'], p['lng']] for p in poly.locations[0]]) if conv else sg.Polygon([[p['lng'], p['lat']] for p in poly.locations[0]])
+    except: return sg.Polygon([[p[0],p[1]] for p in poly.locations]) if conv else sg.Polygon([[p[1],p[0]] for p in poly.locations])
+
+def get_extent(poly, crsPoly='epsg:4326', crs=False):
+    newPoly = get_polygon(poly, conv=True)
+    if crs:
+        bds = gpd.GeoSeries([newPoly], crs=crsPoly).to_crs(crs).bounds.values[0]
+        return gpd.GeoSeries([sg.Polygon.from_bounds(bds[0],bds[1],bds[2],bds[3])], crs={'init':crs})
+    else: 
+        return newPoly, gpd.GeoSeries([newPoly], crs={'init':crsPoly})
+      
 #--------------------------------------------------------------#
 """Class clustering functions"""
 # Principal Component Analysis
@@ -160,7 +181,9 @@ def get_labels(init, X_test, beliefs, column, values = False, splitString=False)
 def class_metrics(y_true, y_pred, classes=False, orig=False, threshold=0.5):
     yp_clf = np.argmax(y_pred, axis=1)
     if classes is False: classes = [str(i) for i in np.unique(np.append(yp_clf, np.array(y_true)))]
-    elif classes is not orig: yp_clf=np.vectorize(dict(enumerate(classes)).get)(yp_clf)
+    elif classes is not orig: 
+      yp_clf=np.vectorize(dict(enumerate(classes)).get)(yp_clf)
+      classes = np.unique(y_true) if len(np.unique(y_true)) < len(classes) else classes
 #     if len(classes)==2: yp_clf = skl.preprocessing.binarize(y_pred[:,1].reshape(-1,1), threshold=threshold)
     print(skl.metrics.classification_report(y_true, yp_clf, target_names=classes, zero_division=0))
     return yp_clf, classes
