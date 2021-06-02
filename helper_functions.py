@@ -10,9 +10,11 @@ from sklearn.neighbors import BallTree, kneighbors_graph
 #---------------------------------------------------------#
 """Dataframe manipulation functions"""
 # Pandas dataframe to formatted geodataframe
-def df_to_gdf(df, columns, crs='epsg:4326', reIndex=False):
+def df_to_gdf(df, columns, crs='epsg:4326', reIndex=False, invCoords=False):
   coords = np.concatenate(np.array(df.axes[0]))
-  gdf = gpd.GeoDataFrame(df[columns[:]], columns = columns, geometry=gpd.points_from_xy(coords[1::2], coords[0::2]),crs={'init': crs})
+  if invCoords: a,b = 0,1
+  else: a,b =1,0
+  gdf = gpd.GeoDataFrame(df[columns[:]], columns = columns, geometry=gpd.points_from_xy(coords[a::2], coords[b::2]),crs={'init': crs})
   if reIndex:
     gdf = gdf.reset_index()
     del gdf['x']
@@ -70,7 +72,7 @@ def init_beliefs(df, classes=2, columns=False, initBeliefs=False, crs='epsg:4326
     if columns is False: columns = ['cl'+str(s) for s in range(classes)] # Default column headers 
     if initBeliefs is False: initBeliefs = np.ones(len(columns))*(1/len(columns))
     for i, val in enumerate(columns): df[val] = np.ones([len(df)])*initBeliefs[i]
-    return df_to_gdf(df,df.columns,crs=crs,reIndex=True)
+    return df_to_gdf(df,df.columns,crs=crs,reIndex=True) if type(df) is not gpd.geodataframe.GeoDataFrame else df
   
 # Group classes of labels according to classes matrix (1 row per class - [min val, max val])
 def group_classes(labels, classes, zeroNan=False, intervals = False):
@@ -139,7 +141,8 @@ def create_edges(nodes, adjacent=True, geo_neighbors=4, values=False, neighbours
     # Create edges between most similar phase change pixels
     if values is not False:
         for i, val in enumerate(values):
-          edges = edges + np.ndarray.tolist(np.array(kneighbors_graph(np.array(nodes[val]).reshape(-1,len(np.array([val]))),neighbours[i],mode='connectivity',include_self=False).nonzero()).reshape(2,-1).transpose())
+          edges = edges + np.ndarray.tolist(np.array(kneighbors_graph(np.array(nodes[val]).reshape(-1,len(np.array(val))),neighbours[i],mode='connectivity',include_self=False).nonzero()).reshape(2,-1).transpose())
+#           edges = edges + np.ndarray.tolist(np.array(kneighbors_graph(np.array(nodes[val]).reshape(-1,len(np.array([val]))),neighbours[i],mode='connectivity',include_self=False).nonzero()).reshape(2,-1).transpose())
 #            edges = edges + np.ndarray.tolist(np.array(kneighbors_graph(np.array(nodes[val]).reshape(-1,len(list(val))),neighbours[i],mode='connectivity',include_self=False).nonzero()).reshape(2,-1).transpose())
     return np.array(edges)
   

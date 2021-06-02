@@ -29,10 +29,13 @@ cd data
 # # Manually Mapped Data
 # gdown -O manualDamageClasses.csv "https://drive.google.com/uc?export=download&id=11IYcRwrYVJbOWWP7JGDS4EKyTaggSWx5"
 
-read -p "Do you wish to download HR data? (Type Y/N)" y
+# read -p "Do you wish to download HR data? (Type Y/N)" y
 
-if [ "$y" = "Y" ]; then
-  gdown -O damageDetection.zip "https://drive.google.com/uc?export=download&id=1l11KCDDJfiw_2D111c-E_uvl6d0gUWuv"
-fi
+# if [ "$y" = "Y" ]; then
+#   gdown -O damageDetection.zip "https://drive.google.com/uc?export=download&id=1l11KCDDJfiw_2D111c-E_uvl6d0gUWuv"
+# fi
 
-echo "Finished Downloading!"
+# echo "Finished Downloading!"
+
+gdown -O un-data.zip "https://drive.google.com/uc?export=download&id=18HZSuSrIRHC2cuUefFfN2Hxj1_NTaOlf"
+https://drive.google.com/file/d/18HZSuSrIRHC2cuUefFfN2Hxj1_NTaOlf/view?usp=sharing
