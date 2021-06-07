@@ -151,7 +151,7 @@ def img_to_gdf(file, poly=False, crs=False, label='img', columns=False, crsPoly=
     img = rxr.open_rasterio(file, masked=True).squeeze()
     # Crop image if polygon supplied
     if poly:
-        extent = hf.get_extent(poly, crsPoly=crsPoly, crs=crs)
+        _, extent = hf.get_extent(poly, crsPoly=crsPoly, crs=crs)
         img = img.rio.clip(extent.geometry.apply(sg.mapping))   
     named = img.rename('img')
     
@@ -163,4 +163,4 @@ def img_to_gdf(file, poly=False, crs=False, label='img', columns=False, crsPoly=
     df = pd.DataFrame(named.data.reshape(3,-1).transpose(), index=mi)
     columns = df.columns if columns is False else columns
     gdf = hf.df_to_gdf(df,columns,crs=crs, reIndex=True).to_crs({'init':crsPoly})
-    return gdf
+    return gdf, named

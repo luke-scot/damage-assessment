@@ -89,16 +89,16 @@ def belief_plot(nodes, ax, column, normalise = False):
     return nodes.plot(ax=ax, column=column, cmap='RdYlGn_r', vmin=0,vmax=1)  
 
 # Create confusion matrix for all classes contained in y_true and y_pred
-def confusion_matrix(axs, y_true, yp_clf, classes):
-  conf = skl.metrics.confusion_matrix(y_true, yp_clf)
-  try: ax = axs[0]
-  except: ax = axs
-  ax.imshow(conf, interpolation='nearest')
-  ax.set_xticks(range(len(classes))), ax.set_xticklabels(classes), ax.set_yticks(range(len(classes))), ax.set_yticklabels(classes)
-  ax.set_xlabel('Predicted Class'), ax.set_ylabel('True Class'), ax.set_title('Confusion Matrix')
-  for i in range(len(classes)): 
-      for j in range(len(classes)): text = ax.text(j, i, conf[i, j], ha="center", va="center", color="r")
-  return axs
+def confusion_matrix(axs, y_true, yp_clf, classes=None):
+    conf = skl.metrics.confusion_matrix(y_true, yp_clf, labels=classes)
+    try: ax = axs[0]
+    except: ax = axs
+    ax.imshow(conf, interpolation='nearest')
+    ax.set_xticks(range(len(classes))), ax.set_xticklabels(classes), ax.set_yticks(range(len(classes))), ax.set_yticklabels(classes)
+    ax.set_xlabel('Predicted Class'), ax.set_ylabel('True Class'), ax.set_title('Confusion Matrix')
+    for i in range(len(classes)): 
+        for j in range(len(classes)): text = ax.text(j, i, conf[i, j], ha="center", va="center", color="r")
+    return axs
 
 # Evaluate the cross entropy metrics and plot histogram of individual beliefs
 def cross_entropy_metrics(axs, y_true, y_pred, classes, dmgThresh=0.5, initBelief=0.5):
@@ -123,5 +123,5 @@ def cross_entropy_multiclass(ax, y_true, y_pred):
         a.append(y_pred[:,int(i)].reshape(-1,1)[np.array([y_true==val])[0]])
     ax.set_title('Resulting Multi-Class Beliefs'), ax.set_xlabel('Classes'), ax.set_ylabel('Probability')
     ax.boxplot(a)
-    ax.hlines(1/len(np.unique(y_true)),1,len(np.unique(y_true)), colors='r', linestyles='dashed', label='A priori')
+    ax.hlines(1/y_pred.shape[1],1,len(np.unique(y_true)), colors='r', linestyles='dashed', label='A priori')
     return ax

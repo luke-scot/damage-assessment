@@ -45,11 +45,11 @@ def get_polygon(poly, conv = False):
     try: return sg.Polygon([[p['lat'], p['lng']] for p in poly.locations[0]]) if conv else sg.Polygon([[p['lng'], p['lat']] for p in poly.locations[0]])
     except: return sg.Polygon([[p[0],p[1]] for p in poly.locations]) if conv else sg.Polygon([[p[1],p[0]] for p in poly.locations])
 
-def get_extent(poly, crsPoly='epsg:4326', crs=False):
-    newPoly = get_polygon(poly, conv=True)
+def get_extent(poly, crsPoly='epsg:4326', crs=False, conv=False):
+    newPoly = get_polygon(poly, conv=conv)
     if crs:
         bds = gpd.GeoSeries([newPoly], crs=crsPoly).to_crs(crs).bounds.values[0]
-        return gpd.GeoSeries([sg.Polygon.from_bounds(bds[0],bds[1],bds[2],bds[3])], crs={'init':crs})
+        return newPoly, gpd.GeoSeries([sg.Polygon.from_bounds(bds[0],bds[1],bds[2],bds[3])], crs={'init':crs})
     else: 
         return newPoly, gpd.GeoSeries([newPoly], crs={'init':crsPoly})
       
@@ -179,11 +179,14 @@ def get_labels(init, X_test, beliefs, column, values = False, splitString=False)
 
 # Obtain classification report for classes
 def class_metrics(y_true, y_pred, classes=False, orig=False, threshold=0.5):
+    print(classes)
     yp_clf = np.argmax(y_pred, axis=1)
-    if classes is False: classes = [str(i) for i in np.unique(np.append(yp_clf, np.array(y_true)))]
+    if classes is False: 
+        classes = [str(i) for i in np.unique(np.append(yp_clf, np.array(y_true)))]
     elif classes is not orig: 
-      yp_clf=np.vectorize(dict(enumerate(classes)).get)(yp_clf)
-      classes = np.unique(y_true) if len(np.unique(y_true)) < len(classes) else classes
-#     if len(classes)==2: yp_clf = skl.preprocessing.binarize(y_pred[:,1].reshape(-1,1), threshold=threshold)
-    print(skl.metrics.classification_report(y_true, yp_clf, target_names=classes, zero_division=0))
+        yp_clf=np.vectorize(dict(enumerate(classes)).get)(yp_clf)
+        classes = np.unique(y_true) if len(np.unique(y_true)) < len(classes) else classes
+#     print(classes)
+        #     if len(classes)==2: yp_clf = skl.preprocessing.binarize(y_pred[:,1].reshape(-1,1), threshold=threshold)
+    print(skl.metrics.classification_report(y_true, yp_clf, target_names=None if orig is False else orig, zero_division=0))
     return yp_clf, classes
