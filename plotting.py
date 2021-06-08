@@ -48,9 +48,9 @@ def plot_assessments(gdf, mapName):
       mapName.add_control(l1)
   return mapName
   
-def draw_polygon(gdf, mapName, stdTest=False, southDev=0.012):
+def draw_polygon(gdf, mapName, stdTest=False, sd=0.014, wd=0.006, nd=0, ed=0):
   bd = gdf.total_bounds
-  testPoly = ipl.Polygon(locations = [(bd[1]+southDev, bd[0]), (bd[1]+southDev, bd[2]), (bd[3], bd[2]),(bd[3], bd[0])],
+  testPoly = ipl.Polygon(locations = [(bd[1]+sd, bd[0]+wd), (bd[1]+sd, bd[2]-ed), (bd[3]-nd, bd[2]-ed),(bd[3]-nd, bd[0]+wd)],
                          color="yellow",
                          fill_color="yellow",
                          transform=False if stdTest else True)

@@ -1,7 +1,10 @@
-import rasterio
+import os
+import random
+import importlib
 import ground_truth
 import numpy as np
 import pandas as pd
+import rasterio as ro
 import rioxarray as rxr
 import geopandas as gpd
 import helper_functions as hf
@@ -9,6 +12,7 @@ import shapely.geometry as sg
 from rasterio.io import MemoryFile
 from rasterio.enums import Resampling
 from rasterio.windows import from_bounds
+from rasterio.warp import calculate_default_transform, reproject, Resampling
 
 #----------------------------------------------------#
 """Label Imports"""
@@ -94,7 +98,7 @@ def image_to_df(imgFile, label='label', poly=False):
 """Raster import functions"""
 # Convert image raster to array
 def raster_to_array(file, crop=False):
-    img = rasterio.open(file)
+    img = ro.open(file)
     return get_training_array(img) if crop else img.read()
 
 # Get training data from ground_truth class (ground_truth.py must be in folder)
@@ -164,3 +168,80 @@ def img_to_gdf(file, poly=False, crs=False, label='img', columns=False, crsPoly=
     columns = df.columns if columns is False else columns
     gdf = hf.df_to_gdf(df,columns,crs=crs, reIndex=True).to_crs({'init':crsPoly})
     return gdf, named
+  
+#------------------------------------------------------#
+"""Reprojecting functions"""
+def get_crs(file):
+    return str(ro.open(file).crs)
+
+def conv_coords(inFiles, outFiles, crs='EPSG:4326', verbose=True):
+    for num, file in enumerate(inFiles):
+        with ro.open(file) as src:
+            transform, width, height = calculate_default_transform(
+                src.crs, crs, src.width, src.height, *src.bounds)
+            kwargs = src.meta.copy()
+            kwargs.update({
+                'crs': crs,
+                'transform': transform,
+                'width': width,
+                'height': height
+            })
+
+            with ro.open(outFiles[num], 'w', **kwargs) as dst:
+                for j in range(1, src.count + 1):
+                    reproject(
+                        source=ro.band(src, j),
+                        destination=ro.band(dst, j),
+                        src_transform=src.transform,
+                        src_crs=src.crs,
+                        dst_transform=transform,
+                        dst_crs=crs,
+                        resampling=Resampling.nearest)
+                if verbose: print(file+" reprojected to "+outFiles[num])
+    return outFiles
+
+#-------------------------------------------------------#
+"""Importing & Resampling Images"""
+def img_to_df(file, poly=False, crs=False, label='img', columns=False, crsPoly='epsg:4326', verbose=True):
+    # Import raster
+    img = rxr.open_rasterio(file, masked=True).squeeze()
+    
+    # Crop image if polygon supplied
+    if poly:
+        _, extent = hf.get_extent(poly, crsPoly=crsPoly, crs=crs)
+        img = img.rio.clip(extent.geometry.apply(sg.mapping))   
+    named = img.rename('img')
+    
+    # Convert to dataframe
+    xm, ym = np.meshgrid(np.array(named.coords['x']), np.array(named.coords['y']))
+    mi = pd.MultiIndex.from_arrays([ym.flatten(),xm.flatten()],names=('y','x'))
+    df = pd.DataFrame(named.data.reshape(3,-1).transpose(), index=mi)
+    if verbose: print(file+" read completed.")
+    
+    return df, named
+  
+def resample_tif(file, testPoly, out, verbose=True):
+    img = rxr.open_rasterio(file, masked=True).squeeze()
+    _, extent = hf.get_extent(testPoly)
+    imgCrop = img.rio.clip(extent.geometry.apply(sg.mapping))   
+    imgNm = imgCrop.rename('img')
+    imgNm.rio.to_raster(out)
+    if verbose: print(file+ " read completed.")
+
+def tif_to_array(tifFile, cropFile):
+        cropFile = importlib.import_module(cropFile)
+        importlib.reload(cropFile)
+        tif, b = ro.open(tifFile), cropFile.data.labelled_bounds
+        array = tif.read(window=from_bounds(b[0],b[1],b[2],b[3],transform=tif.transform),
+                         out_shape=(tif.count, cropFile.data.height, cropFile.data.width),
+                         resampling=Resampling.bilinear)
+        tif.close()
+        return array.copy()
+
+def del_file_endings(directory, ending):
+    for item in os.listdir(directory): 
+        if item.endswith(ending): os.remove(item)
+          
+def get_sample_gdf(data, max_nodes, crs='EPSG:4326'):
+    samples = data.copy().iloc[random.sample(range(0, data.shape[0]), max_nodes)].reset_index(drop=False) if len(data) > max_nodes else data.copy()
+    return gpd.GeoDataFrame(samples[samples.columns[2:]], geometry=gpd.points_from_xy(samples['y'], samples['x']),crs=crs)
