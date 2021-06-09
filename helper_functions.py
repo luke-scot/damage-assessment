@@ -179,7 +179,6 @@ def get_labels(init, X_test, beliefs, column, values = False, splitString=False)
 
 # Obtain classification report for classes
 def class_metrics(y_true, y_pred, classes=False, orig=False, threshold=0.5):
-    print(classes)
     yp_clf = np.argmax(y_pred, axis=1)
     if classes is False: 
         classes = [str(i) for i in np.unique(np.append(yp_clf, np.array(y_true)))]
