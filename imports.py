@@ -19,6 +19,7 @@ from rasterio.warp import calculate_default_transform, reproject, Resampling
 def shape_to_gdf(file, splitString = False, cn='decision', crs=False):
     labels = gpd.read_file(file)
     if crs: labels= labels.to_crs({'init': crs})
+    if cn not in labels.columns: raise ValueError(cn+" column not found in labels dataframe.")
     if splitString: labels[cn] = labels[cn].str.split(' ').str[0]
     return labels
   

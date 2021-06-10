@@ -149,7 +149,7 @@ def prior_beliefs(nodes, beliefColumns, classNames=False, beliefs=[0,1], column=
 def create_edges(nodes, adjacent=True, geo_neighbors=4, values=False, neighbours=[2]):
     edges = []
     # Create edges between geographically adjacent nodes
-    if adjacent:
+    if adjacent and (geo_neighbours > 0):
         points = np.array([nodes.geometry.x,nodes.geometry.y]).transpose()
         tree = BallTree(points, leaf_size=15, metric='haversine')
         _, ind = tree.query(points, k=geo_neighbors+1)
@@ -162,7 +162,8 @@ def create_edges(nodes, adjacent=True, geo_neighbors=4, values=False, neighbours
     # Create edges between most similar phase change pixels
     if values is not False:
         for i, val in enumerate(values):
-          edges = edges + np.ndarray.tolist(np.array(kneighbors_graph(np.array(nodes[val]).reshape(-1,len(np.array(val))),neighbours[i],mode='connectivity',include_self=False).nonzero()).reshape(2,-1).transpose())
+          if neighbours[i] > 0:
+            edges = edges + np.ndarray.tolist(np.array(kneighbors_graph(np.array(nodes[val]).reshape(-1,len(np.array(val))),neighbours[i],mode='connectivity',include_self=False).nonzero()).reshape(2,-1).transpose())
 #           edges = edges + np.ndarray.tolist(np.array(kneighbors_graph(np.array(nodes[val]).reshape(-1,len(np.array([val]))),neighbours[i],mode='connectivity',include_self=False).nonzero()).reshape(2,-1).transpose())
 #            edges = edges + np.ndarray.tolist(np.array(kneighbors_graph(np.array(nodes[val]).reshape(-1,len(list(val))),neighbours[i],mode='connectivity',include_self=False).nonzero()).reshape(2,-1).transpose())
     return np.array(edges)
@@ -185,7 +186,5 @@ def class_metrics(y_true, y_pred, classes=False, orig=False, threshold=0.5):
     elif classes is not orig: 
         yp_clf=np.vectorize(dict(enumerate(classes)).get)(yp_clf)
         classes = np.unique(y_true) if len(np.unique(y_true)) < len(classes) else classes
-#     print(classes)
-        #     if len(classes)==2: yp_clf = skl.preprocessing.binarize(y_pred[:,1].reshape(-1,1), threshold=threshold)
-    print(skl.metrics.classification_report(y_true, yp_clf, target_names=None if orig is False else orig, zero_division=0))
+    print(skl.metrics.classification_report(y_true, yp_clf, target_names=None if classes is False else classes, zero_division=0))
     return yp_clf, classes

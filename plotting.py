@@ -36,18 +36,18 @@ def to_geodata(gdf, color):
     return plotGdf
 
 # Plotting for building footprints with attached assessments
-def plot_assessments(gdf, mapName):
-  mapName.add_layer(to_geodata(gdf.loc[gdf['decision'].str.contains('GREEN')],'green'))
-  mapName.add_layer(to_geodata(gdf.loc[gdf['decision'].str.contains('YELLOW')],'yellow'))
-  mapName.add_layer(to_geodata(gdf.loc[gdf['decision'].str.contains('RED')],'red'))
-  mapName.add_layer(to_geodata(gdf.loc[gdf['decision'].str.contains('TOTAL')],'maroon'))
-  mapName.add_layer(to_geodata(gdf.loc[gdf['decision'].str.contains('LAND')],'cyan'))
+def plot_assessments(gdf, mapName, cn='decision', classes=['GREEN','YELLOW','RED','TOTAL','LAND'], colors=['green','yellow','red','maroon','cyan']):
+  classes = inputs['labels']['decision'].unique() if classes is False else classes 
+  leg = {}
+  for i, cl in enumerate(classes):
+    mapName.add_layer(to_geodata(gdf.loc[gdf[cn].str.contains(cl)],colors[i]))
+    leg.update({cl:colors[i]})
 
   if not 'l1' in globals(): # Add legend if forming map for first time
-      l1 = ipl.LegendControl({"No Restrictions":"#008000", "Restricted Use":"#FFFF00", "Unsafe/Evacuated":"#FF0000", "Total Destruction":"#800000", "Land":"#00FFFF", "No Decision":"#0000FF"}, name="Decision", position="bottomleft")
+      l1 = ipl.LegendControl(leg, name=cn, position="bottomleft")
       mapName.add_control(l1)
   return mapName
-  
+
 def draw_polygon(gdf, mapName, stdTest=False, sd=0.014, wd=0.006, nd=0, ed=0):
   bd = gdf.total_bounds
   testPoly = ipl.Polygon(locations = [(bd[1]+sd, bd[0]+wd), (bd[1]+sd, bd[2]-ed), (bd[3]-nd, bd[2]-ed),(bd[3]-nd, bd[0]+wd)],
@@ -90,7 +90,7 @@ def belief_plot(nodes, ax, column, normalise = False):
 
 # Create confusion matrix for all classes contained in y_true and y_pred
 def confusion_matrix(axs, y_true, yp_clf, classes=None):
-    conf = skl.metrics.confusion_matrix(y_true, yp_clf, labels=classes)
+    conf = skl.metrics.confusion_matrix(y_true, yp_clf)
     try: ax = axs[0]
     except: ax = axs
     ax.imshow(conf, interpolation='nearest')
@@ -99,7 +99,7 @@ def confusion_matrix(axs, y_true, yp_clf, classes=None):
     for i in range(len(classes)): 
         for j in range(len(classes)): text = ax.text(j, i, conf[i, j], ha="center", va="center", color="r")
     return axs
-
+  
 # Evaluate the cross entropy metrics and plot histogram of individual beliefs
 def cross_entropy_metrics(axs, y_true, y_pred, classes, dmgThresh=0.5, initBelief=0.5):
     try: ax = axs[1]
@@ -117,11 +117,11 @@ def cross_entropy_metrics(axs, y_true, y_pred, classes, dmgThresh=0.5, initBelie
     return axs, log_loss
   
 # Cross entropy for multi-class with box plots
-def cross_entropy_multiclass(ax, y_true, y_pred):
+def cross_entropy_multiclass(ax, y_true, y_pred, classes):
     a = []
     for i, val in enumerate(np.sort(np.unique(y_true))):
         a.append(y_pred[:,int(i)].reshape(-1,1)[np.array([y_true==val])[0]])
     ax.set_title('Resulting Multi-Class Beliefs'), ax.set_xlabel('Classes'), ax.set_ylabel('Probability')
-    ax.boxplot(a)
+    ax.boxplot(a, labels=classes)
     ax.hlines(1/y_pred.shape[1],1,len(np.unique(y_true)), colors='r', linestyles='dashed', label='A priori')
     return ax
