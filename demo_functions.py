@@ -161,7 +161,7 @@ def model_parameters(v):
     display(ipw.VBox([button3, out3]))
     
     # Update variables
-    v.update({'bxNClasses':bxNClasses,'bxNodes':bxNodes,'bxEdges':bxEdges,'bxAdjacent':bxAdjacent})
+    v.update({'bxNClasses':bxNClasses,'bxNodes':bxNodes,'bxEdges':bxEdges,'bxAdjacent':bxAdjacent,'unique':unique})
     return v  
   
   
@@ -203,7 +203,7 @@ def import_data(v):
             if globals()['preFile'+str(i)]: 
                 ip.resample_tif(globals()['preFile'+str(i)], testPoly, 'pretemp'+str(i)+'.tif')
                 globals()['dataArray'+str(i)] -= ip.tif_to_array('pretemp'+str(i)+'.tif', 'resample')
-        ip.del_file_endings(".", "temp.tif")
+        ip.del_file_endings(".", "temp*.tif")
 
     # Concatenate data types
     data = df.copy()
@@ -239,7 +239,7 @@ def classify_data(v):
         classesUsed = usedNames.copy()
     elif nClasses > defClasses: raise NameError('Cannot assign more classes than in original data') # If invalid input
     elif nClasses < defClasses: # Perform class grouping
-        if (classAssign is False) or not any(classAssign) or (len(set([item for sublist in classAssign for item in sublist])) is not defClasses): # Perform clustering
+        if (classAssign is False) or not any(classAssign) or (len(set([item for sublist in classAssign for item in sublist])) is not defClasses) or (len([item for sublist in classAssign for item in sublist]) is not defClasses): # Perform clustering
             if classAssign is not False: print('Incorrect class assignment - Proceeding with clustering. Please assign a single class for each value.')
             # Assign labels to each pixel
             allPixels = hf.create_nodes(initial, labelsUsed[['geometry',cn]][labelsUsed.within(hf.get_polygon(testPoly, conv=True))])
@@ -292,26 +292,27 @@ def run_bp(v):
     v.update({'confidence':confidence, 'neighbours':neighbours, 'adjacent':adjacent, 'geoNeighbours':geoNeighbours, 'X_train':X_train, 'X_test':X_test, 'nodes':nodes, 'priors':priors, 'edges':edges,'beliefs':beliefs})
     return v
   
+# Evaluation Metrics
 def evaluate_output(v):
     for i in v.keys(): globals()[i] = v[i]
-    # Evaluation Metrics
     # Get y_true vs y_pred for test set
     y_true, y_pred = hf.get_labels(initial, X_test, beliefs, column=cn)
     
     # Classification metrics
-    yp_clf, classes = hf.class_metrics(y_true, y_pred, classes=usedNames, orig=classNames)
+    pred_clf, true_clf = hf.class_metrics(y_true, y_pred, classes=usedNames, orig=unique)
 
     fig, axs = pl.create_subplots(1,2, figsize=[14,5])
+    
     # Confusion matrix
-    axs = pl.confusion_matrix(axs, y_true, yp_clf, classes if len(labels[cn].unique()) == nClasses else list(range(nClasses)))
+    axs = pl.confusion_matrix(axs, pred_clf, true_clf, usedNames)
 
     # Cross entropy / Confidence metrics
-    if nClasses == 2: axs = pl.cross_entropy_metrics(axs, y_true, y_pred[:,1].reshape(-1,1), classes)
-    else: axs[1] = cross_entropy_multiclass(axs[1], y_true, y_pred, classes)
+    if nClasses == 2: axs = pl.cross_entropy_metrics(axs, y_true, y_pred[:,1].reshape(-1,1), usedNames)
+    else: axs[1] = pl.cross_entropy_multiclass(axs[1], true_clf, y_pred, usedNames)
 
     pl.show_plot()
     
-    v.update({'y_true':y_true, 'y_pred':y_pred, 'yp_clf':yp_clf, 'classes':classes, 'fig':fig})
+    v.update({'y_true':y_true, 'y_pred':y_pred, 'true_clf':true_clf, 'pred_clf':pred_clf, 'fig':fig})
     
     return v
   

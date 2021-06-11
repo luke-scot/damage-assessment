@@ -171,20 +171,17 @@ def create_edges(nodes, adjacent=True, geo_neighbors=4, values=False, neighbours
 #---------------------------------------------#
 """Evaluating metrics functions"""
 # Get y_true and y_pred for test set oof nodes
-def get_labels(init, X_test, beliefs, column, values = False, splitString=False):
-    if splitString: y_true = gpd.sjoin(init, X_test, how='left', op='within').dropna(subset=[column]).decision.str.split(' ').str[0]
-    else: y_true = gpd.sjoin(init, X_test, how='left', op='within').dropna(subset=[column])[column]
+def get_labels(init, X_test, beliefs, column, values = False):
+    y_true = gpd.sjoin(init, X_test, how='left', op='within').dropna(subset=[column])[column]
     if values: y_true = y_true.map(values)
     y_pred = skl.preprocessing.normalize(beliefs[y_true.index], norm='l1')
     return np.array(y_true).reshape(-1,1).astype(type(y_true.values[0])), y_pred
 
 # Obtain classification report for classes
-def class_metrics(y_true, y_pred, classes=False, orig=False, threshold=0.5):
+def class_metrics(y_true, y_pred, classes, orig):
     yp_clf = np.argmax(y_pred, axis=1)
-    if classes is False: 
-        classes = [str(i) for i in np.unique(np.append(yp_clf, np.array(y_true)))]
-    elif classes is not orig: 
-        yp_clf=np.vectorize(dict(enumerate(classes)).get)(yp_clf)
-        classes = np.unique(y_true) if len(np.unique(y_true)) < len(classes) else classes
-    print(skl.metrics.classification_report(y_true, yp_clf, target_names=None if classes is False else classes, zero_division=0))
-    return yp_clf, classes
+    d = dict(enumerate(classes))
+    pred_clf = [d.get(i) for i in yp_clf]
+    true_clf = [d.get(i[0]) for i in y_true] if len(classes) < len(orig) else y_true
+    print(skl.metrics.classification_report(true_clf, pred_clf,zero_division=0))#, target_names=classes, zero_division=0))
+    return true_clf, pred_clf  

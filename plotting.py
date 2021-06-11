@@ -27,20 +27,20 @@ def create_map(lat, lon, zoom):
   return ipl.Map(basemap=ipl.basemaps.OpenStreetMap.Mapnik, center=[lat, lon], zoom=zoom, scroll_wheel_zoom=True)
   
 # Converting gdf columns to GeoData for plotting
-def to_geodata(gdf, color):
+def to_geodata(gdf, color, name='Data'):
     plotGdf = ipl.GeoData(geo_dataframe = gdf,
                           style={'color': color, 'radius':2, 'fillColor': color, 'opacity':0.9, 'weight':1.9, 'dashArray':'2', 'fillOpacity':0.7},
                           hover_style={'fillColor': 'white' , 'fillOpacity': 0.2},
                           point_style={'radius': 3, 'color': color, 'fillOpacity': 0.8, 'fillColor': color, 'weight': 3},
-                          name = 'Images')
+                          name = name)
     return plotGdf
 
 # Plotting for building footprints with attached assessments
-def plot_assessments(gdf, mapName, cn='decision', classes=['GREEN','YELLOW','RED','TOTAL','LAND'], colors=['green','yellow','red','maroon','cyan']):
+def plot_assessments(gdf, mapName, cn='decision', classes=['GREEN','YELLOW','RED','TOTAL','LAND'], colors=['green','yellow','red','maroon','cyan'], layer_name='Data'):
   classes = inputs['labels']['decision'].unique() if classes is False else classes 
   leg = {}
   for i, cl in enumerate(classes):
-    mapName.add_layer(to_geodata(gdf.loc[gdf[cn].str.contains(cl)],colors[i]))
+    mapName.add_layer(to_geodata(gdf.loc[gdf[cn].str.contains(cl)],colors[i],layer_name))
     leg.update({cl:colors[i]})
 
   if not 'l1' in globals(): # Add legend if forming map for first time
@@ -90,7 +90,7 @@ def belief_plot(nodes, ax, column, normalise = False):
 
 # Create confusion matrix for all classes contained in y_true and y_pred
 def confusion_matrix(axs, y_true, yp_clf, classes=None):
-    conf = skl.metrics.confusion_matrix(y_true, yp_clf)
+    conf = skl.metrics.confusion_matrix(y_true, yp_clf, classes)
     try: ax = axs[0]
     except: ax = axs
     ax.imshow(conf, interpolation='nearest')
@@ -107,11 +107,11 @@ def cross_entropy_metrics(axs, y_true, y_pred, classes, dmgThresh=0.5, initBelie
     p1 = ax.hist(y_pred[(np.array(1-y_true)*y_pred).nonzero()[0]], range = [0,1], bins = 100, label = 'True '+classes[0], color = 'g', alpha = 0.5)
     if len(classes) > 1:
         p2 = ax.hist(y_pred[(np.array(y_true)*y_pred).nonzero()[0]], range = [0,1], bins = 100, label = 'True '+classes[1], color = 'r', alpha = 0.5)
-    ax.axvline(x=dmgThresh, color='k',linestyle='--', linewidth=1, label='Damage Threshold')
+    ax.axvline(x=dmgThresh, color='k',linestyle='--', linewidth=1, label='Classification Threshold')
     ax.axvline(x=initBelief, color='b',linestyle='--', linewidth=1, label='Initial probability')
     log_loss = skl.metrics.log_loss(y_true, y_pred, labels=[0,1])
     ax.set_title('Cross-Entropy loss: {}'.format(log_loss))
-    ax.legend(loc='upper right'), ax.set_xlabel('Damage Probability'), ax.set_ylabel('Number of predictions')
+    ax.legend(loc='upper right'), ax.set_xlabel(classes[1]+'Probability'), ax.set_ylabel('Number of predictions')
     ax.text(dmgThresh/2, 0.6, classes[0]+'\n Prediction', ha='center', va='center', transform=ax.transAxes)
     ax.text(dmgThresh+(1-dmgThresh)/2, 0.6, classes[1]+'\n Prediction', ha='center', va='center', transform=ax.transAxes)
     return axs, log_loss
@@ -119,9 +119,10 @@ def cross_entropy_metrics(axs, y_true, y_pred, classes, dmgThresh=0.5, initBelie
 # Cross entropy for multi-class with box plots
 def cross_entropy_multiclass(ax, y_true, y_pred, classes):
     a = []
-    for i, val in enumerate(np.sort(np.unique(y_true))):
-        a.append(y_pred[:,int(i)].reshape(-1,1)[np.array([y_true==val])[0]])
+    for i, val in enumerate(classes):
+        a.append(y_pred[:,i].reshape(-1,1)[np.array(y_true)==val])
     ax.set_title('Resulting Multi-Class Beliefs'), ax.set_xlabel('Classes'), ax.set_ylabel('Probability')
     ax.boxplot(a, labels=classes)
-    ax.hlines(1/y_pred.shape[1],1,len(np.unique(y_true)), colors='r', linestyles='dashed', label='A priori')
+    ax.hlines(1/y_pred.shape[1],1,len(classes), colors='r', linestyles='dashed', label='A priori')
+    ax.legend(loc='best')
     return ax
