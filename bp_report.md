@@ -1,6 +1,79 @@
 # Graph-Based Belief Propagation for Post-Disaster Damage Assessment
 
+[![hackmd-github-sync-badge](https://hackmd.io/OrUFc3xLT1yftbxL0k5QZg/badge)](https://hackmd.io/OrUFc3xLT1yftbxL0k5QZg)
+
+
 ## Introduction
+
+### Application Background
+
+In the aftermath of a major disaster, such as the 2015 Nepal earthquake or the 2020 Beirut explosion, the Local Emergency Management Agency (LEMA), generally a designated branch of the local government, is responsible for coordinating the response. Oftentimes, a request for international aid is directed to the United Nations' (UN) [Inter-Agency Standing Committee (IASC)](https://interagencystandingcommittee.org/) who co-ordinate the deployment of international teams from UN agencies (e.g. [UN Disaster Assessment and Coordination (UNDAC)](https://www.unocha.org/our-work/coordination/un-disaster-assessment-and-coordination-undac)), NGOs (e.g. [SARAID](https://www.saraid.org/)) and international governments to the affected area. The scope of work of international teams with expertise in rescue operations and engineering, is dictated by the LEMA according to their needs and falls under two priority activities which we will address in turn: Search and Rescue (S&R) and Damage Assessment (DA).
+
+#### Search and Rescue
+
+Post-disaster a rapid S&R response can significantly reduce casualties due to infrastructure damage, therefore co-ordinated and effective organisation is crucial to avoid missed areas or duplication. The first task of S&R is sectorisation, see figure 1, with number and types of reconaissance teams deployed according to a sector's likely needs. Sector prioritisation is a crucial response step to reach the most affected areas quickly and save lives.
+
+Figure 1: Sectorisation - to divide the affected area into sectors according to geography, population density, building vulnerability with consideration given to likely gatherings or damages to key infrastructure (e.g. hospitals), Beirut 2020.
+
+Decision making during prioritisation must be justifiable, should there be a later inquiry, based upon prior knowledge of an area's vulnerability and initial reports received through remaining communication channels or aerial photography. However a systematic approach to collating the sparse and inconsistent data available does not exist. Herein lies an opportunity to create a novel framework for combining data from multiple sources, including structural assessments and satellite imagery, as it become available to infer a rapid initial damage assessment. Associated with a quantification of uncertainty in damage estimates, such a tool would be a very useful for prioritising resource allocation.
+
+#### Damage Assessment
+
+A more overlooked part of disaster response than S&R is damage assessment. DA is key for preventing avoidable casualties caused by structural failures occurring in the hours or days post-disaster. Furthermore a disaster does not end when casualties are accounted for, livelihoods must be restored without delay to avoid a disaster triggering a humanitarian crisis which could last years or even generations as individuals and families are displaced or left in ruin. DA is the first step to recovery by determining priorities for structural intervention and for direct humanitarian aid to those most in need. 
+
+Under the leadership of UNDAC a consistent approach to building damage classification is being developed based on the [Applied Technology Council](https://www.atcouncil.org/)'s [methodology](http://www.atcouncil.org/pdfs/ATC45Rapid.pdf) using a traffic light system to label buildings in a range from safe to unsafe. Firstly, as with S&R, a systematic approach to rapidly inferring a building's classification would be of great use in directing engineering and humanitarian response. Secondly, a consistent mapping of DA with increasingly available ground information will aid in communicating the extent of damages and actions required (e.g. evacuate building) to residents and responders alike.
+
+The increasing digitilisation of response practices, such as structural assessments, photography and geotagged social media posts further increases the need for a flexible framework to combine and make use of all the data available in real-time.
+
+<!-- % Think about techonology progression (more and more interactive)
+% Figure for UNDAC classification?
+-->
+
+
+### Modelling Background
+
+#### Model Requirements
+
+Table 1 summarises the requirements of a model able to synthesise the available data into an actionable output for DA. 
+
+| Properties    | Requirements | 
+| ------------- | ------------ |
+| Input    | Multi-Modal Data - Many different types <br> Sparse Datasets - Incomplete with many gaps <br> Frequently Updated |
+| Output        | Uncertainty Quantification - Scale of confidence in prediction<br> Maximise Data Exploitation - Use as much data as available <br> Easily Interpretable - Understandable to anyone |
+| Computation   | Flexible - Various input types <br> Rapid - Runs in seconds to minutes <br> Scalable - Usable in areas of different sizes <br> Inexpensive - Runs anywhere in real time |
+
+ 
+
+#### Graph-Based Belief Propagation 
+
+A graph-based approach satisfies the input requirements stated in table 1 by allowing multi-modal data to be assigned to individual nodes each representing a small patch of the damaged area such as a 10x10 metre square. The damage probability for each node can then be updated as additional input data becomes available.
+
+Belief Propagation (BP) within the graph structure allows for inference of DA based on the similarities between nodes. Figure 2 shows how edges are constructed between similar nodes according to their properties from input datasets or simply geographical proximity. Beyond simple label-propagation our requirement for uncertainty quantification lead us to a model incorporating belief propagation (BP) to account for uncertainty in the labelling of each node.
+
+Figure 2 - Graph representation basic graph
+
+Together with the computational considerations set out in table 1, our requirements lead us to constructing our model based on the Dirichlet-Multinomial BP algorithm called NetConf created by Eswaran et al., 2017, with a run-time scaling linearly with an increase in nodes.
+
+
+### Previous Work
+
+Applying NetConf as a multi-modal BP approach to damage assessment builds upon work in 3 related fields. 
+
+#### Remote Sensing for Damage Assessments
+Remote sensing in the broadest sense includes any measurement taken at a distance from the measured object. In the context of this study we will narrow the focus of remote sensing to satellite measurements of the Earth's surface within the area of interest. Satellite observations are the only way to gain a complete image of the area soon after a disaster, and have the benefit of being generally independent of a countries resources with global coverage. 
+
+The first type of satellite measurements is passive observation which senses radiation in the visible and near infrared regions of the electromagnetic spectrum \cite{IntrotoRS}. Visible imagery is the most easily interpretable due to the familiarity of this part of the spectrum to a human interpreter. Studies including ... and ... have used imagery to identify damages through segmentation and ... respectively. The limitations of using visible imagery are threefold. Firstly High-Resolution (HR) imagery (<5 metres per pixel) is not readily available and resolutions can still be too low to identify any detailed damages. Secondly, imagery is taken from directly above the area and damage will only be identified if the rooftops or parts of the infrastructure nearest the satellite have changed their radiative properties. Finally, as passive measurements rely on solar illumination of the Earth's surface, they are sensitive to time-of-day and inclement weather, limiting the availability of high quality data.
+
+Another type of 
+
+* 
+
+#### Belief Propagation for Remote Sensing
+
+#### NetConf for Belief Propagation
+
+### Study Outline
+
 
 ### Background
 
