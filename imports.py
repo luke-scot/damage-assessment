@@ -216,7 +216,8 @@ def img_to_df(file, poly=False, crs=False, label='img', columns=False, crsPoly='
     # Convert to dataframe
     xm, ym = np.meshgrid(np.array(named.coords['x']), np.array(named.coords['y']))
     mi = pd.MultiIndex.from_arrays([ym.flatten(),xm.flatten()],names=('y','x'))
-    df = pd.DataFrame(named.data.reshape(3,-1).transpose(), index=mi)
+    size = min(named.shape) if len(named.shape) > 2 else 1 
+    df = pd.DataFrame(named.data.reshape(size,-1).transpose(), index=mi)
     if verbose: print(file+" read completed.")
     
     return df, named
@@ -244,5 +245,5 @@ def del_file_endings(directory, ending):
         if item.endswith(ending): os.remove(item)
           
 def get_sample_gdf(data, max_nodes, crs='EPSG:4326'):
-    samples = data.copy().iloc[random.sample(range(0, data.shape[0]), max_nodes)].reset_index(drop=False) if len(data) > max_nodes else data.copy()
+    samples = data.copy().iloc[random.sample(range(0, data.shape[0]), max_nodes)].reset_index(drop=False) if len(data) > max_nodes else data.copy().reset_index(drop=False)
     return gpd.GeoDataFrame(samples[samples.columns[2:]], geometry=gpd.points_from_xy(samples['y'], samples['x']),crs=crs)

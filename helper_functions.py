@@ -146,13 +146,13 @@ def prior_beliefs(nodes, beliefColumns, classNames=False, beliefs=[0,1], column=
     return np.array(nodes[beliefColumns])
 
 # Create edges between nodes according to similarity
-def create_edges(nodes, adjacent=True, geo_neighbors=4, values=False, neighbours=[2]):
+def create_edges(nodes, adjacent=True, geo_neighbours=4, values=False, neighbours=[2]):
     edges = []
     # Create edges between geographically adjacent nodes
     if adjacent and (geo_neighbours > 0):
         points = np.array([nodes.geometry.x,nodes.geometry.y]).transpose()
         tree = BallTree(points, leaf_size=15, metric='haversine')
-        _, ind = tree.query(points, k=geo_neighbors+1)
+        _, ind = tree.query(points, k=geo_neighbours+1)
         for i in np.arange(1,ind.shape[1]):
             edges = edges + np.ndarray.tolist(np.array([ind[:,0],ind[:,i]]).transpose())
         edges = np.array(edges)

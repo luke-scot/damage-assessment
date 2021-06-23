@@ -91,7 +91,7 @@ def label_map(v):
     display(m1)
     
     # Update variables
-    v.update({'labels': labels, 'testPoly': testPoly})
+    v.update({'labels': labels, 'testPoly': testPoly, 'm1':m1})
     return v
 
 # Ask for entry of model parameters
@@ -107,7 +107,9 @@ def model_parameters(v):
     display(ipw.HTML(value = f"<h3>{'Model Parameters'}</h3>"))
     
     # Nodes
-    bxNodes = ipw.Box([ipw.Label(value='Maximum nodes - Sampling occurs if < pixel number: '), ipw.IntText(value=20000, placeholder='20000',  disabled=False, step=1000, layout=layout, min=2)])
+    bxNodes = ipw.Box([ipw.Label(value='Max nodes - Sampling occurs if < pixel number:'), ipw.IntText(value=20000, placeholder='20000',  disabled=False, step=1000, layout=layout, min=2),
+                      ipw.Label(value='Ground Truth Percentage - '), 
+                      ipw.FloatSlider(value=50, min=0.1, max=99.9, step=0.1, disabled=False, orientation='horizontal', readout=True, readout_format='.1f')])
 
     # Edges
     # Neighbours for each data type
@@ -210,11 +212,12 @@ def import_data(v):
     for j in range(1, len(dataTypes)): data[dataTypes[j]]=globals()['dataArray'+str(j)].flatten()
     data.dropna(inplace=True)
     print("------Finished Data Import---------")
-    
-    v.update({'data':data, 'typesUsed':[list(df.columns.values), dataTypes[1:]]})
+    typesUsed = [list(df.columns.values)]
+    for j in range(1,len(dataTypes)): typesUsed.append(list(data.columns[[dataTypes[j] in str(i) for i in data.columns]]))
+
+    v.update({'data':data, 'typesUsed':typesUsed})
     return v
   
-## Assign Label classes to data
 def classify_data(v):
     # Retrieve data from inputs
     for i in v.keys(): globals()[i] = v[i]
@@ -239,7 +242,8 @@ def classify_data(v):
         classesUsed = usedNames.copy()
     elif nClasses > defClasses: raise NameError('Cannot assign more classes than in original data') # If invalid input
     elif nClasses < defClasses: # Perform class grouping
-        if (classAssign is False) or not any(classAssign) or (len(set([item for sublist in classAssign for item in sublist])) is not defClasses) or (len([item for sublist in classAssign for item in sublist]) is not defClasses): # Perform clustering
+        items = [item for sublist in classAssign for item in sublist] if classAssign is not False else False
+        if (classAssign is False) or not any(classAssign) or (len(items) is not (len(set(items)))): # Perform clustering
             if classAssign is not False: print('Incorrect class assignment - Proceeding with clustering. Please assign a single class for each value.')
             # Assign labels to each pixel
             allPixels = hf.create_nodes(initial, labelsUsed[['geometry',cn]][labelsUsed.within(hf.get_polygon(testPoly, conv=True))])
@@ -254,7 +258,11 @@ def classify_data(v):
             # Create groups of classes
             classesUsed = []
             for j in range(nClasses): classesUsed.append([initLabels[i] for i, x in enumerate(list(clusterClasses)) if x==j])
-        else: 
+        
+        else:
+            if len(set(items)) is not defClasses:
+                print('Not all labels have been assigned to class. Sampling data to include only labels selected.')
+                labelsUsed = labelsUsed.loc[labelsUsed[cn].isin(items)]
             classesUsed = classAssign
             #used = [i in flatten_list(classesUsed) for i in labelsUsed[cn]]
             initial = hf.init_beliefs(dataUsed, classes=nClasses, columns=usedNames, crs=crs)
@@ -264,18 +272,20 @@ def classify_data(v):
     print("------Finished Data Classification---------") 
 
     # Update variables
-    v.update({'max_nodes':max_nodes, 'nClasses':nClasses, 'classAssign':classAssign,'classNames':classNames, 'labelsUsed':labelsUsed,'initial':initial, 'usedNames':usedNames, 'classesUsed':classesUsed})
+    v.update({'max_nodes':max_nodes, 'nClasses':nClasses, 'classAssign':classAssign,'classNames':classNames, 'labelsUsed':labelsUsed,'initial':initial, 'usedNames':usedNames, 'classesUsed':classesUsed, 'dataUsed':dataUsed})
     return v
+
   
 def run_bp(v):
     # Retrieve data from inputs
     for i in v.keys(): globals()[i] = v[i]
+    trainSplit = bxNodes.trait_values()['children'][3].value
     confidence = list(bxConf.trait_values()['children'][1].value)
     neighbours = [i.value for i in bxEdges.trait_values()['children'][1].trait_values()['children']]
     adjacent, geoNeighbours = [i.value for i in bxAdjacent.trait_values()['children'][1::2]]
     
     # Split train/test set for located nodes
-    X_train, X_test, y_train, y_test = hf.train_test_split(labelsUsed, cn, hf.get_polygon(testPoly, conv=True))
+    X_train, X_test, y_train, y_test = hf.train_test_split(labelsUsed, cn, hf.get_polygon(testPoly, conv=True), testSplit=(1-(trainSplit/100)))
 
     # Create nodes
     nodes = hf.create_nodes(initial, X_train)
@@ -284,12 +294,12 @@ def run_bp(v):
     priors = hf.prior_beliefs(nodes, beliefColumns = initial.columns[-nClasses:], beliefs=confidence, classNames=classNames, column = cn)
 
     # Create edges
-    edges = hf.create_edges(nodes, adjacent=adjacent, geo_neighbors=geoNeighbours, values=typesUsed, neighbours=neighbours)
+    edges = hf.create_edges(nodes, adjacent=adjacent, geo_neighbours=geoNeighbours, values=typesUsed, neighbours=neighbours)
     
     # Run belief propagation
     beliefs, _ = nc.netconf(edges,priors,verbose=True,limit=1e-3)
     
-    v.update({'confidence':confidence, 'neighbours':neighbours, 'adjacent':adjacent, 'geoNeighbours':geoNeighbours, 'X_train':X_train, 'X_test':X_test, 'nodes':nodes, 'priors':priors, 'edges':edges,'beliefs':beliefs})
+    v.update({'trainSplit':trainSplit, 'confidence':confidence, 'neighbours':neighbours, 'adjacent':adjacent, 'geoNeighbours':geoNeighbours, 'X_train':X_train, 'X_test':X_test, 'nodes':nodes, 'priors':priors, 'edges':edges,'beliefs':beliefs})
     return v
   
 # Evaluation Metrics
@@ -299,12 +309,12 @@ def evaluate_output(v):
     y_true, y_pred = hf.get_labels(initial, X_test, beliefs, column=cn)
     
     # Classification metrics
-    pred_clf, true_clf = hf.class_metrics(y_true, y_pred, classes=usedNames, orig=unique)
+    true_clf, pred_clf = hf.class_metrics(y_true, y_pred, classes=usedNames, orig=unique)
 
     fig, axs = pl.create_subplots(1,2, figsize=[14,5])
     
     # Confusion matrix
-    axs = pl.confusion_matrix(axs, pred_clf, true_clf, usedNames)
+    axs = pl.confusion_matrix(axs, true_clf, pred_clf, usedNames)
 
     # Cross entropy / Confidence metrics
     if nClasses == 2: axs = pl.cross_entropy_metrics(axs, y_true, y_pred[:,1].reshape(-1,1), usedNames)
@@ -320,6 +330,6 @@ def evaluate_output(v):
 def save_plot(v, location=False):
     for i in v.keys(): globals()[i] = v[i]
     if location: pl.save_plot(fig, location)
-    else: pl.save_plot(fig, 'results/Beirut_UN_nd{}_cls{}{}_neighbours{}{}_std{}_adj{}{}'.format(str(len(nodes)),str(nClasses),str(classesUsed),
+    else: pl.save_plot(fig, 'results/Beirut_UN_nd{}tr{}_cls{}{}_neighbours{}{}_std{}_adj{}{}'.format(str(len(nodes)), str(int(trainSplit*100)), str(nClasses),str(classesUsed),
                                                                                           str(dataTypes),str(neighbours),str(stdTest),
                                                                                           str(adjacent),str(geoNeighbours)))
