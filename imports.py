@@ -244,6 +244,7 @@ def del_file_endings(directory, ending):
     for item in os.listdir(directory): 
         if item.endswith(ending): os.remove(item)
           
-def get_sample_gdf(data, max_nodes, crs='EPSG:4326'):
+def get_sample_gdf(data, max_nodes, crs='EPSG:4326',seed=1):
+    random.seed(seed)
     samples = data.copy().iloc[random.sample(range(0, data.shape[0]), max_nodes)].reset_index(drop=False) if len(data) > max_nodes else data.copy().reset_index(drop=False)
     return gpd.GeoDataFrame(samples[samples.columns[2:]], geometry=gpd.points_from_xy(samples['y'], samples['x']),crs=crs)

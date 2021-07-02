@@ -180,6 +180,7 @@ def reproject_data(v):
 
 def import_data(v):
     # Retrieve file locations from inputs
+    v['dataTypes'] = [i.value.split(' ')[0] for i in v['bxDataTypes'].trait_values()['children'][1:] if len(i.value) > 0]
     for j in range(len(v['dataTypes'])):
         try: v['preFile'+str(j)], v['postFile'+str(j)] = [i.value for i in v['bxfile'+str(j)].trait_values()['children'][1::2]]    
         except KeyError: raise KeyError('Please make sure you have confirmed the data types.')
@@ -218,7 +219,7 @@ def import_data(v):
     v.update({'data':data, 'typesUsed':typesUsed})
     return v
   
-def classify_data(v):
+def classify_data(v,seed=1):
     # Retrieve data from inputs
     for i in v.keys(): globals()[i] = v[i]
     max_nodes = bxNodes.trait_values()['children'][1].value
@@ -229,7 +230,7 @@ def classify_data(v):
     # Sample data and create geodataframe
     print("------Data Sampling---------")
     if max_nodes < 2: raise ValueError("Insufficient Nodes for belief propagation")
-    gdf = ip.get_sample_gdf(data, max_nodes, crs)
+    gdf = ip.get_sample_gdf(data, max_nodes, crs,seed=1)
    
     print("------Data Classification---------")
     
@@ -275,8 +276,7 @@ def classify_data(v):
     v.update({'max_nodes':max_nodes, 'nClasses':nClasses, 'classAssign':classAssign,'classNames':classNames, 'labelsUsed':labelsUsed,'initial':initial, 'usedNames':usedNames, 'classesUsed':classesUsed, 'dataUsed':dataUsed})
     return v
 
-  
-def run_bp(v):
+def run_bp(v, limit=1e-5):
     # Retrieve data from inputs
     for i in v.keys(): globals()[i] = v[i]
     trainSplit = bxNodes.trait_values()['children'][3].value
@@ -292,12 +292,15 @@ def run_bp(v):
 
     # Assign prior beliefs from assessments
     priors = hf.prior_beliefs(nodes, beliefColumns = initial.columns[-nClasses:], beliefs=confidence, classNames=classNames, column = cn)
-
-    # Create edges
-    edges = hf.create_edges(nodes, adjacent=adjacent, geo_neighbours=geoNeighbours, values=typesUsed, neighbours=neighbours)
     
-    # Run belief propagation
-    beliefs, _ = nc.netconf(edges,priors,verbose=True,limit=1e-3)
+    if all(values is 0 for values in neighbours) and (geoNeighbours is 0):
+        edges, beliefs = [], priors
+    else:
+        # Create edges
+        edges = hf.create_edges(nodes, adjacent=adjacent, geo_neighbours=geoNeighbours, values=typesUsed, neighbours=neighbours)
+
+        # Run belief propagation
+        beliefs, _ = nc.netconf(edges,priors,verbose=True,limit=limit)
     
     v.update({'trainSplit':trainSplit, 'confidence':confidence, 'neighbours':neighbours, 'adjacent':adjacent, 'geoNeighbours':geoNeighbours, 'X_train':X_train, 'X_test':X_test, 'nodes':nodes, 'priors':priors, 'edges':edges,'beliefs':beliefs})
     return v
@@ -311,7 +314,7 @@ def evaluate_output(v):
     # Classification metrics
     true_clf, pred_clf = hf.class_metrics(y_true, y_pred, classes=usedNames, orig=unique)
 
-    fig, axs = pl.create_subplots(1,2, figsize=[14,5])
+    fig, axs = pl.create_subplots(1,2, figsize=[12,5])
     
     # Confusion matrix
     axs = pl.confusion_matrix(axs, true_clf, pred_clf, usedNames)
