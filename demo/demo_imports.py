@@ -10,6 +10,12 @@ import shapely.geometry as sg
 from glob import glob
 from rasterio.merge import merge
 
+#---------------------------------------#
+"""DataFrame utilities"""
+# Concatenate dataframes
+def concat_dfs(dfs, axis=1):
+    return pd.concat(dfs, axis=axis)
+
 #-------------------------------------------------------------#
 """Polygon Manipulation functions"""
 def get_polygon(poly, conv = False):
@@ -56,7 +62,7 @@ def tif_to_array(tifFile, cropFile):
 def arr_to_df(arr):
     df = pd.DataFrame(arr.reshape(-1,len(arr)),columns=['R','G','B'])
     df['x'], df['y'] = np.tile(np.arange(arr.shape[2]),arr.shape[1]), np.repeat(range(arr.shape[1]),arr.shape[2])
-    return highres.set_index(['y','x'])
+    return df.set_index(['y','x'])
 
 # Function taking a raster input and outputting pandas dataframe
 def raster_to_df(file, cn='class', target=False, crop = False):
@@ -87,6 +93,10 @@ def img_to_df(file, poly=False, crs=False, label='img', columns=False, crsPoly='
     if verbose: print(file+" read completed.")
     
     return df, named
+
+def tif_to_df(tifFile, cropFile):
+    arr = ip.tif_to_array(tifFile,cropFile)
+    return pd.DataFrame(arr.reshape(-1,len(arr)))
 
 #---------------------------------------------------#
 """Resampling Functions for rasters"""

@@ -1,3 +1,4 @@
+import os
 import numpy as np
 import ipywidgets as ipw
 import demo_plotting as pl
@@ -235,3 +236,90 @@ def model_parameters(v):
     # Update variables
     v.update({'bxNClasses':bxNClasses,'bxNodes':bxNodes,'bxEdges':bxEdges,'bxAdjacent':bxAdjacent,'unique':unique,'labels': labels})
     return v  
+  
+#------------------------------------#
+"""Data import functions"""
+
+# Reproject data if not in correct crs or single file
+def reproject_data(v):
+    print("------Checking Coordinate Systems-------")
+    # Loop through each data type for files
+    for i in range(len(v['dataTypes'])):
+        # Check if it is a directory - try mosaicing components
+        if os.path.isdir(v['postFile'+str(i)]): 
+            print(v['postFile'+str(i)]+'is directory - Attempting to mosaic directory contents.')
+            try: 
+                v['postFile'+str(i)] = ip.get_training_array(ip.mosaic(v['groundTruth'],v['postFile'+str(i)]), v['groundTruth'])
+                print('Mosaic successful')
+            except: raise ValueError("Failed to mosaic directory")
+        elif 'preFile'+str(i) in v.keys() and os.path.isdir(v['preFile'+str(i)]): v['preFile'+str(i)] = ip.get_training_array(get_mosaic(v['groundTruth'],v['preFile'+str(i)]), v['groundTruth']) 
+                     
+        # Check coordinate system is correct - otherwise reproject        
+        elif v['crs'] not in ip.get_crs(v['postFile'+str(i)]):
+            v['postFile'+str(i)] = ip.conv_coords([v['postFile'+str(i)]], ["data/PostConv"+str(i)+".tif"], v['crs'])[0]
+            if v['preFile'+str(i)]: v['preFile'+str(i)] = conv_coords(v['preFile'+str(i)], ["data/PreConv"+str(i)+".tif"], v['crs'])[0]
+    print("------Finished Checking Coordinate Systems-------")
+    return v
+
+# Import datatypes into dataframe
+def import_data(v):
+    # Retrieve file locations from inputs
+    v['dataTypes'] = [i.value.split(' ')[0] for i in v['bxDataTypes'].trait_values()['children'][1:] if len(i.value) > 0]
+    for j in range(len(v['dataTypes'])):
+        try: v['preFile'+str(j)], v['postFile'+str(j)] = [i.value for i in v['bxfile'+str(j)].trait_values()['children'][1::2]]    
+        except KeyError: raise KeyError('Please make sure you have confirmed the data types.')
+   
+    # Reproject Data if necessary
+    v = reproject_data(v)
+    for i in v.keys(): globals()[i] = v[i] # Retrieve variables to use
+        
+    # Import Files
+    print("------Importing Data Files---------")
+    # Import first data type
+    if defs['map']:
+        globals()['dataArray0'], crop = ip.img_to_df(postFile0, testPoly, crs=crs)
+        if preFile0:
+            preDf, _ = ip.img_to_df(preFile0, testPoly, crs=crs)
+            globals()['dataArray0'] -= preDf
+
+        # Import other data types
+        if len(dataTypes) > 1:
+            crop.rio.to_raster("croptemp.tif")
+            for i in range(1, len(dataTypes)):
+                ip.resample_tif(globals()['postFile'+str(i)], testPoly, 'posttemp'+str(i)+'.tif')
+                globals()['dataArray'+str(i)] = ip.tif_to_df('posttemp'+str(i)+'.tif', 'resample')
+                if globals()['preFile'+str(i)]: 
+                    ip.resample_tif(globals()['preFile'+str(i)], testPoly, 'pretemp'+str(i)+'.tif')
+                    globals()['dataArray'+str(i)] -= ip.tif_to_df('pretemp'+str(i)+'.tif', 'resample')
+            ip.del_file_endings(".", "temp*.tif")
+            
+    # If first file not needed for cropping raster
+    else: 
+        # Loop through datatypes
+        for i in range(len(dataTypes)):
+            # If postfile is file
+            if type(globals()['postFile'+str(i)]) is str and os.path.isfile(globals()['postFile'+str(i)]):
+                globals()['dataArray'+str(i)], _ = ip.raster_to_df(globals()['postFile'+str(i)], cn=dataTypes[i], crop=True, target=groundTruth)
+                print('Imported'+globals()['postFile'+str(i)])
+            # Else post file is a mosaiced directory now an array
+            else: globals()['dataArray'+str(i)] = ip.arr_to_df(globals()['postFile'+str(i)])
+            # Check for pre files and do the same
+            if globals()['preFile'+str(i)]:
+                if type(globals()['preFile'+str(i)]) is str and os.path.isfile(globals()['preFile'+str(i)]):
+                    df_temp, _ = ip.raster_to_df(globals()['preFile'+str(i)], cn=dataTypes[i], crop=True, target=groundTruth)
+                    globals()['dataArray'+str(i)] -= df_temp
+                    print('Imported'+globals()['preFile'+str(i)])
+                else: globals()['dataArray'+str(i)] -= ip.arr_to_df(globals()['preFile'+str(i)])
+    
+    # Get the column names separated into sublists for each type, to be used later
+    typesUsed=[]
+    for j, val in enumerate(dataTypes):
+        globals()['dataArray'+str(j)].columns = [str(val)+s if str(val) not in s else s for s in list(globals()['dataArray'+str(j)].columns.values.astype(str))]
+        globals()['dataArray'+str(j)].index = globals()['dataArray'+str(0)].index # All data is with dataArray0 coords (choose wisely)
+        typesUsed += [list(globals()['dataArray'+str(j)].columns.values)]
+    
+    # Concatenate dataframes
+    data = ip.concat_dfs([globals()['dataArray'+str(i)] for i in range(len(dataTypes))])
+
+    v.update({'data':data, 'typesUsed':typesUsed})
+    return v
