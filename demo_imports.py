@@ -95,7 +95,7 @@ def img_to_df(file, poly=False, crs=False, label='img', columns=False, crsPoly='
     return df, named
 
 def tif_to_df(tifFile, cropFile):
-    arr = ip.tif_to_array(tifFile,cropFile)
+    arr = tif_to_array(tifFile,cropFile)
     return pd.DataFrame(arr.reshape(-1,len(arr)))
 
 #---------------------------------------------------#

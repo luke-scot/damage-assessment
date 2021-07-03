@@ -1,8 +1,19 @@
 import os
+import math
 import numpy as np
+import geopandas as gpd
 import ipywidgets as ipw
+import matplotlib.pyplot as plt
+import matplotlib.colors as clrs
+from branca.colormap import linear
+from ipyleaflet import LayersControl
+from scipy.interpolate import griddata
+
+import netconf as nc
 import demo_plotting as pl
 import demo_imports as ip
+import demo_transforms as tr
+
 #--------------------------------------------#
 """Input Functions"""
 # Ask for default assessment to be used
@@ -323,3 +334,260 @@ def import_data(v):
 
     v.update({'data':data, 'typesUsed':typesUsed})
     return v
+
+#------------------------------------------#
+"""Data classification functions"""
+  
+def classify_data(v,seed=1):
+    # Retrieve data from inputs
+    for i in v.keys(): globals()[i] = v[i]
+    max_nodes = bxNodes.trait_values()['children'][1].value
+    nClasses = bxNClasses.trait_values()['children'][1].value
+    classAssign = False if ('bxAssign' not in v) or (bxCluster.trait_values()['children'][1].value is True) else [list(i.value) for i in bxAssign.trait_values()['children']]
+    classNames = False if 'bxClNames' not in v else [i.value for i in bxClNames.trait_values()['children']]
+
+    # Sample data and create geodataframe
+    print("------Data Sampling---------")
+    if max_nodes < 2: raise ValueError("Insufficient Nodes for belief propagation")
+    gdf = tr.get_sample_gdf(data, max_nodes, crs,seed=1)
+    # Sample labels
+    if 'GeoDataFrame' not in str(type(labels)):
+        labelsUsed = tr.get_sample_gdf(labels, max_nodes, crs,seed=1)
+        #labelsUsed = gpd.GeoDataFrame(labelsUsed.copy(),geometry=gpd.points_from_xy(labelsUsed.reset_index()['x'],labelsUsed.reset_index()['y']))
+    else: labelsUsed = labels.copy().to_crs(crs)
+    if rmvClass: 
+        nClasses -= len(rmvClass)
+        kept = [i not in rmvClass for i in labelsUsed[cn]]
+        labelsUsed = labelsUsed.iloc[kept] # Remove undesire labels (e.g. unclassified data)
+        if 'GeoDataFrame' not in str(type(labels)):
+            gdf = gdf.iloc[kept]
+    print("------Data Classification---------")
+    
+    defClasses, dataUsed = len(labelsUsed[cn].unique()), gdf.copy() # Default classes from labels
+    usedNames = labelsUsed[cn].unique() if nClasses==defClasses or nClasses is False else classNames
+    initial = tr.init_beliefs(dataUsed, classes=nClasses, columns=usedNames, crs=crs) # Initial class value for each data pixel
+
+    if not nClasses or nClasses == defClasses: 
+        nClasses = defClasses # If default classes used
+        classesUsed = usedNames.copy()
+    elif nClasses > defClasses: 
+        raise NameError('Cannot assign more classes than in original data') # If invalid input
+    elif nClasses < defClasses: # Perform class grouping
+        items = [item for sublist in classAssign for item in sublist] if classAssign is not False else False
+        if (classAssign is False) or not any(classAssign) or (len(items) is not (len(set(items)))): # Perform clustering
+            if classAssign is not False: print('Incorrect class assignment - Proceeding with clustering. Please assign a single class for each value.')
+            # Assign labels to each pixel
+            if 'GeoDataFrame' in str(type(labels)): 
+                allPixels = tr.create_nodes(initial, labelsUsed[['geometry',cn]][labelsUsed.within(tr.get_polygon(testPoly, conv=True))])
+            else: allPixels = tr.create_nodes(initial, labelsUsed[['geometry',cn]])
+            # Run PCA if set to True
+            #X = hf.run_PCA(dataUsed[typesUsed[0]].values.transpose(), pcaComps).components_.transpose() if pca else dataUsed[typesUsed[0]]
+            types = [item for sublist in typesUsed for item in sublist]
+            X = dataUsed[types]
+            #print(allPixels[cn].dropna().index)
+            # Run clustering
+            meanCluster = True
+            kmeans, clusterClasses, initLabels = tr.run_cluster(X.loc[allPixels[cn].dropna().index].values.reshape(-1,len(types)), allPixels[cn].dropna(), meanCluster, nClasses)
+            print('Clustered classes:{} , original classes:{}'.format(clusterClasses, initLabels))
+            # Create groups of classes
+            classesUsed = []
+            for j in range(nClasses): classesUsed.append([initLabels[i] for i, x in enumerate(list(clusterClasses)) if x==j])
+        
+        else:
+            if len(set(items)) is not defClasses:
+                print('Not all labels have been assigned to class. Sampling data to include only labels selected.')
+                labelsUsed = labelsUsed.loc[labelsUsed[cn].isin(items)]
+            classesUsed = classAssign
+            #used = [i in flatten_list(classesUsed) for i in labelsUsed[cn]]
+            initial = tr.init_beliefs(dataUsed, classes=nClasses, columns=usedNames, crs=crs)
+
+        # Assign labels for each pixel after clustering
+        labelsUsed[cn] = tr.group_classes(labelsUsed[cn], classesUsed)
+    print("------Finished Data Classification---------") 
+
+    # Update variables
+    v.update({'max_nodes':max_nodes, 'nClasses':nClasses, 'classAssign':classAssign,'classNames':classNames, 'labelsUsed':labelsUsed,'initial':initial, 'usedNames':usedNames, 'classesUsed':classesUsed, 'dataUsed':dataUsed})
+    return v
+  
+#------------------------------------------#
+"""Run Belief Propagation"""
+def run_bp(v):
+    # Retrieve data from inputs
+    for i in v.keys(): globals()[i] = v[i]
+    initial = v['initial'].copy()
+    trainSplit = bxNodes.trait_values()['children'][3].value
+    confidence = list(bxConf.trait_values()['children'][1].value)
+    neighbours = [i.value for i in bxEdges.trait_values()['children']]
+    adjacent, geoNeighbours = [i.value for i in bxAdjacent.trait_values()['children'][1::2]]
+
+    # Split pixels in to train and test sets    
+    X_train, X_test, y_train, y_test = tr.train_test_split(labelsUsed, cn, tr.get_polygon(testPoly, conv=True) if 'testPoly' in v.keys() else False, testSplit=(1-(trainSplit/100)))
+    
+    # Create nodes
+    nodes = tr.create_nodes(initial, X_train)
+
+    summary = nodes.groupby(cn).size()
+    if equivUse:
+        equiv = gpd.GeoDataFrame()
+        for i in summary.index.values:
+            equiv = equiv.append(nodes[nodes[cn] == i][0:min(summary)])
+        equiv = equiv.append(nodes[[np.isnan(x) for x in nodes[cn]]])
+        nodes=equiv.copy()
+        initial = initial.loc[nodes.index.values].reset_index()
+    
+    # Assign prior beliefs from assessments
+    priors = tr.prior_beliefs(nodes, beliefColumns = initial.columns[-nClasses:], beliefs=confidence, classNames=classNames, column = cn)
+    
+    if all(values is 0 for values in neighbours) and (geoNeighbours is 0):
+        edges, beliefs = [], priors
+    else:
+        # Create edges
+        edges = tr.create_edges(nodes, adjacent=adjacent, geo_neighbours=geoNeighbours, values=typesUsed, neighbours=neighbours)
+
+        # Run belief propagation
+        beliefs, _ = nc.netconf(edges,priors,verbose=True,limit=limit)
+    
+    v.update({'trainSplit':trainSplit, 'confidence':confidence, 'neighbours':neighbours, 'adjacent':adjacent, 'geoNeighbours':geoNeighbours, 'X_train':X_train, 'X_test':X_test, 'nodes':nodes, 'priors':priors, 'edges':edges,'beliefs':beliefs,'initial':initial})
+    return v
+  
+
+#------------------------------------------------#
+"""Evaluation Metrics"""
+def evaluate_output(v):
+    for i in v.keys(): globals()[i] = v[i]
+    # Get y_true vs y_pred for test set
+    y_true, y_pred = tr.get_labels(initial, X_test, beliefs, column=cn, equivTest=equivTest)
+    
+    # Classification metrics
+    true_clf, pred_clf = tr.class_metrics(y_true, y_pred, classes=usedNames, orig=unique)
+
+    fig, axs = pl.create_subplots(1,2, figsize=[12,5])
+    
+    # Confusion matrix
+    axs = pl.confusion_matrix(axs, true_clf, pred_clf, usedNames)
+
+    # Cross entropy / Confidence metrics
+    if nClasses == 2: axs = pl.cross_entropy_metrics(axs, y_true, y_pred[:,1].reshape(-1,1), usedNames)
+    
+    else: axs[1] = pl.cross_entropy_multiclass(axs[1], true_clf, y_pred, usedNames)
+
+    pl.show_plot()
+    
+    v.update({'y_true':y_true, 'y_pred':y_pred, 'true_clf':true_clf, 'pred_clf':pred_clf, 'fig':fig})
+    
+    return v
+  
+# Save figure
+def save_plot(v, location=False):
+    for i in v.keys(): globals()[i] = v[i]
+    if location: pl.save_plot(fig, location)
+    else: pl.save_plot(fig, 'results/Beirut_UN_nd{}tr{}_cls{}{}_neighbours{}{}_std{}_adj{}{}'.format(str(len(nodes)), str(int(trainSplit*100)), str(nClasses),str(classesUsed),
+                                                                                          str(dataTypes),str(neighbours),str(stdTest),
+                                                                                          str(adjacent),str(geoNeighbours)))
+      
+      
+#----------------------------------------------------#
+"""Result map plotting"""
+# This bit is not quite as well functioned off.
+# Visualise spatial results
+def map_result(v):
+    for i in v.keys(): globals()[i] = v[i] # Retrieve variables to use
+    ngrid=100 # Gridding for contour maps
+    # Sample for test locations
+    tests = gpd.sjoin(initial, X_test, how='left', op='within').dropna(subset=[cn])
+    summary = tests.groupby(cn).size()
+    if equivTest:
+        equiv = gpd.GeoDataFrame()
+        for i in summary.index.values:
+            equiv = equiv.append(tests[tests[cn] == i][0:min(summary)])
+        equiv = equiv.append(tests[[np.isnan(x) for x in tests[cn]]])
+        tests = equiv.copy()
+    tests['prediction']=pred_clf
+
+    # Plot interactive map for shape type labels
+    if 'GeoDataFrame' in str(type(labels)):
+        # Create map
+        mf = pl.create_map(lat, lon, zoom, basemap=ipl.basemaps.OpenStreetMap.BlackAndWhite)
+
+        # Plot ground truth
+        pl.plot_assessments(labels, mf, cn=cn, layer_name='Ground truth', fill=0.3, legName='Ground Truth')
+
+        # Plot training locations
+        pl.plot_assessments(nodes.to_crs({'init':crs}).dropna(), mf, layer_name='Train Locations', no_leg=True, classes=sorted([x for x in nodes.decision.unique() if str(x) != 'nan']), colors = ['green', 'red'] if nClasses==2 else None)
+
+        # Plot test locations
+        pl.plot_assessments(tests.to_crs({'init':crs}).dropna(), mf, cn='prediction', layer_name='Test Predictions', no_leg=True, classes=[x for x in tests.prediction.unique() if str(x) != 'nan'], colors = ['green', 'red'] if nClasses==2 else None)
+
+        # Create contours for predictions 
+        xi, yi = np.linspace(nodes.geometry.x.min(), nodes.geometry.x.max(), ngrid), np.linspace(nodes.geometry.y.min(), nodes.geometry.y.max(), ngrid)
+        zi = griddata((nodes.geometry.x, nodes.geometry.y), (beliefs[:,0]-beliefs[:,1]+0.5), (xi[None, :], yi[:, None]), method='nearest')
+        cs = plt.contourf(xi, yi, zi, levels=math.floor((zi.max()-zi.min())/0.1)-1, extend='both')
+        plt.close() 
+
+        # Colours are added for each layer, unfortunately quite manual just now
+        colorsRed = ['#e50000','#ff0000','#ff3232','#ff6666','#ff9999']
+        colorsGreen = ['#e5ffe5','#b2f0b2','#99eb99','#66e166','#32d732','#00b800'] if (plots['bxNodes'].trait_values()['children'][3].value < 15) else ['#b2f0b2','#99eb99','#66e166','#32d732','#00b800']
+        colors=[]
+        for i in range(math.floor(len(cs.allsegs)/2-5)-math.floor(((zi.max()-1-(0-zi.min()))/0.1)/2)): colors.append('#ff0000')
+        colors += colorsRed
+        colors += colorsGreen
+        for i in range(math.ceil(len(cs.allsegs)/2-5)+math.floor(((zi.max()-1-(0-zi.min()))/0.1)/2)): colors.append('#32d732')
+
+        # Add each contour layer as polygon map layer
+        allsegs, allkinds = cs.allsegs, cs.allkinds
+        contourLayer = ipl.LayerGroup(name = 'Assessment Contours')
+        for clev in range(len(cs.allsegs)):
+            kinds = None if allkinds is None else allkinds[clev]
+            segs = pl.split_contours(allsegs[clev], kinds)
+            polygons = ipl.Polygon(locations=[p.tolist() for p in segs], color=colors[clev],
+                                   weight=1, opacity=0.5, fill_color=colors[clev], fill_opacity=0.4,
+                                   name='layer_name')
+            contourLayer.add_layer(polygons)
+        mf.add_layer(contourLayer)
+
+        # Add layer control
+        control = ipl.LayersControl(position='topright')
+        mf.add_control(control)
+
+        # Add colors legend
+        leg = dict(zip([str(round(x-0.1,1))+'-'+str(round(x,1)) for x in np.linspace(1,0.1,10).tolist()],colorsRed+colorsGreen))
+        l2 = ipl.LegendControl(leg, name='Damage Prob', position="topleft")
+        mf.add_control(l2)
+
+        # Add widgets to map
+        zoom_slider = ipw.IntSlider(description='Zoom level:', min=7, max=18, value=14)
+        ipw.jslink((zoom_slider, 'value'), (mf, 'zoom'))
+        widget_control1 = ipl.WidgetControl(widget=zoom_slider, position='topright')
+        mf.add_control(widget_control1)
+        mf.add_control(ipl.FullScreenControl(position='topright'))
+        mf.zoom_control = False
+
+        # Display map
+        display(mf)
+        return mf
+
+    # Plot static map for image style labelling
+    else:
+        fig, [ax1,ax2] = pl.create_subplots(2,1,[10,5])
+        normalized = (beliefs[:,1]-min(beliefs[:,1]))/(max(beliefs[:,1])-min(beliefs[:,1]))
+        res = ax1.tricontourf(nodes.geometry.x,nodes.geometry.y,normalized,cmap='RdYlGn',levels=10)
+        cb1 = fig.colorbar(res,ax=ax1)
+        cb1.set_label('Class 1 probability',fontsize=12), ax1.set_title('Class Probability Map',size=14)
+        ax1.invert_yaxis()
+        ax1.set_xlabel('x pixels', fontsize=12), ax1.set_ylabel('y pixels',fontsize=12)
+        ax2.set_xlabel('x pixels', fontsize=12), ax2.set_ylabel('y pixels',fontsize=12)
+
+        ax2.invert_yaxis()
+
+        a = ax2.tricontourf(labelsUsed.dropna().geometry.x,labelsUsed.dropna().geometry.y, labelsUsed['class'].values,alpha=0.7,levels=1, cmap='RdYlGn')
+        a2 = ax2.tricontourf(labelsUsed.dropna().geometry.x,labelsUsed.dropna().geometry.y, labelsUsed['class'].values,alpha=0.7,levels=2, cmap='RdYlGn')
+
+        ds = 5 # Downsample
+        ax2.scatter(tests[::ds].geometry.x,tests[::ds].geometry.y,c='r',label=classNames[0])
+        ax2.scatter(tests[::ds].geometry.x,tests[::ds].geometry.y,c='g',label=classNames[1])
+        ax2.scatter(tests[::ds].geometry.x,tests[::ds].geometry.y,c=[classNames.index(i) for i in pred_clf][::ds],cmap='RdYlGn')
+        cb2 = fig.colorbar(a, ax=ax2, ticks=[0,1])
+        cb2.set_label('Ground Truth Class',fontsize=12), ax2.set_title('Test Prediction Map',size=14)
+        ax2.legend(title='Predictions',loc='lower left')
+        fig.tight_layout()
+        return(fig)
