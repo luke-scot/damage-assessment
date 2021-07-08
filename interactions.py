@@ -1,8 +1,10 @@
 import os
 import math
+import imageio
 import numpy as np
 import geopandas as gpd
 import ipywidgets as ipw
+import ipyleaflet as ipl
 import matplotlib.pyplot as plt
 import matplotlib.colors as clrs
 from branca.colormap import linear
@@ -33,7 +35,7 @@ def input_parameters(v):
     
     # Standard defaults - change here to add more or modify existing
     # Beirut
-    beirutDefs = {'gtFile':'./data/beirutDamages.shp',
+    beirutDefs = {'gtFile':'./data/Beirut/GroundTruth/allDamages.shp',
                  'crs':'EPSG:4326',
                  'labelColumn':'decision',
                  'map':True,
@@ -42,17 +44,18 @@ def input_parameters(v):
                  'lon':35.512,
                  'zoom':14,
                  'dataTypes':['High resolution imagery','Interferometry'],
-                 'dataFiles':["data/highRes/20JUL31_HR_LatLon.tif","data/highRes/20AUG05_HR_LatLon.tif","./data/beirutPrePreExplosionIfg.tif","./data/beirutPrePostExplosionIfg.tif"],
+                 'dataFiles':["./data/Beirut/HighResolution/20JUL31_HR_LatLon.tif","./data/Beirut/HighResolution/20AUG05_HR_LatLon.tif","./data/Beirut/InSAR/beirutPrePreExplosionIfg.tif","./data/Beirut/InSAR/beirutPrePostExplosionIfg.tif"],
                  'polyBounds':[35.512407312180784, 33.892243658425194, 35.52800151162857, 33.90124240848098],
-                 'colors':['green','yellow','cyan','red','maroon'],
+                 'colors':['green','yellow','cyan','red','maroon']
                  }
     # Houston
-    houstonDefs = {'gtFile':'./data/2018IEEE_Contest/Phase2/TrainingGT/2018_IEEE_GRSS_DFC_GT_TR.tif',
+    houstonDefs = {'gtFile':'./data/Houston/GroundTruth/2018_IEEE_GRSS_DFC_GT_TR.tif',
                   'crs':'EPSG:26915',
                   'labelColumn':'class',
                   'map':False,
                   'dataTypes':['Hyperspectral imagery','LiDAR','High resolution imagery'],
-                  'dataFiles':[None, './data/2018IEEE_Contest/Phase2/FullHSIDataset/20170218_UH_CASI_S4_NAD83.pix',None,'./data/2018IEEE_Contest/Phase2/Lidar GeoTiff Rasters/Intensity_C3/UH17_GI3F051.tif', None,'./data/2018IEEE_Contest/Phase2/Final RGB HR Imagery']
+                  'dataFiles':[None, './data/Houston/Hyperspectral/20170218_UH_CASI_S4_NAD83.pix',None,'./data/Houston/LiDAR/UH17_GI3F051.tif', None,'./data/Houston/HighResolution/houstonmosaic.tif'],
+                   'rmvClass':'0'
                   }
     # Other
     noneDefs = {'gtFile':None,
@@ -210,10 +213,13 @@ def model_parameters(v):
     display(ipw.HTML(value = f"<b>{'Class Properties'}</b>"))
     # Display default classes from labels
     unique = np.sort(labels[cn].unique())
-    display(ipw.HTML(value = "Label Classes - "f"{str(unique)}"))
+    display(ipw.HTML(value = "Labels - "f"{str(unique)}"))
+    # Ask if removing any classes
+    bxRemove = ipw.Box([ipw.Label(value='Remove labels - '), ipw.Text(value=defs['rmvClass'] if 'rmvClass' in defs.keys() else '', placeholder='label1,label2',  disabled=False, layout=layout)])
+    
     # Ask for number of classes to use
     bxNClasses = ipw.Box([ipw.Label(value='Classes for Model - '), ipw.Dropdown(options=list(range(2,len(unique)+1)),value=max(list(range(len(unique)+1))),disabled=False)])   
-    display(bxNClasses)
+    display(bxRemove,bxNClasses)
     
     # Once confirmed then display classification options
     button3 = ipw.Button(description='Confirm Classes', disabled=False, button_style='success', tooltip='Confirm', icon='check')
@@ -245,7 +251,7 @@ def model_parameters(v):
     display(ipw.VBox([button3, out3]))
     
     # Update variables
-    v.update({'bxNClasses':bxNClasses,'bxNodes':bxNodes,'bxEdges':bxEdges,'bxAdjacent':bxAdjacent,'unique':unique,'labels': labels})
+    v.update({'bxNClasses':bxNClasses, 'bxRemove':bxRemove, 'bxNodes':bxNodes,'bxEdges':bxEdges,'bxAdjacent':bxAdjacent,'unique':unique,'labels': labels})
     return v  
   
 #------------------------------------#
@@ -265,8 +271,8 @@ def reproject_data(v):
             except: raise ValueError("Failed to mosaic directory")
         elif 'preFile'+str(i) in v.keys() and os.path.isdir(v['preFile'+str(i)]): v['preFile'+str(i)] = ip.get_training_array(get_mosaic(v['groundTruth'],v['preFile'+str(i)]), v['groundTruth']) 
                      
-        # Check coordinate system is correct - otherwise reproject        
-        elif v['crs'] not in ip.get_crs(v['postFile'+str(i)]):
+        # Check coordinate system is correct - otherwise reproject
+        elif v['crs'] not in ip.get_crs(v['postFile'+str(i)]) and 'None' not in ip.get_crs(v['postFile'+str(i)]):
             v['postFile'+str(i)] = ip.conv_coords([v['postFile'+str(i)]], ["data/PostConv"+str(i)+".tif"], v['crs'])[0]
             if v['preFile'+str(i)]: v['preFile'+str(i)] = conv_coords(v['preFile'+str(i)], ["data/PreConv"+str(i)+".tif"], v['crs'])[0]
     print("------Finished Checking Coordinate Systems-------")
@@ -310,16 +316,19 @@ def import_data(v):
         for i in range(len(dataTypes)):
             # If postfile is file
             if type(globals()['postFile'+str(i)]) is str and os.path.isfile(globals()['postFile'+str(i)]):
-                globals()['dataArray'+str(i)], _ = ip.raster_to_df(globals()['postFile'+str(i)], cn=dataTypes[i], crop=True, target=groundTruth)
-                print('Imported'+globals()['postFile'+str(i)])
+                # Last minute Houston addition if - to avoid mosaicing for demo
+                if 'houstonmosaic' in globals()['postFile'+str(i)]: 
+                    globals()['dataArray'+str(i)] = ip.arr_to_df(np.array(imageio.imread(globals()['postFile'+str(i)])).reshape(3,1202,4768))
+                else: globals()['dataArray'+str(i)], _ = ip.raster_to_df(globals()['postFile'+str(i)], cn=dataTypes[i], crop=True, target=groundTruth)
+                print('Imported '+globals()['postFile'+str(i)])
             # Else post file is a mosaiced directory now an array
             else: globals()['dataArray'+str(i)] = ip.arr_to_df(globals()['postFile'+str(i)])
             # Check for pre files and do the same
-            if globals()['preFile'+str(i)]:
+            if globals()['preFile'+str(i)]: 
                 if type(globals()['preFile'+str(i)]) is str and os.path.isfile(globals()['preFile'+str(i)]):
                     df_temp, _ = ip.raster_to_df(globals()['preFile'+str(i)], cn=dataTypes[i], crop=True, target=groundTruth)
                     globals()['dataArray'+str(i)] -= df_temp
-                    print('Imported'+globals()['preFile'+str(i)])
+                    print('Imported '+globals()['preFile'+str(i)])
                 else: globals()['dataArray'+str(i)] -= ip.arr_to_df(globals()['preFile'+str(i)])
     
     # Get the column names separated into sublists for each type, to be used later
@@ -331,10 +340,12 @@ def import_data(v):
     
     # Concatenate dataframes
     data = ip.concat_dfs([globals()['dataArray'+str(i)] for i in range(len(dataTypes))])
+  
+    print("------Finished Importing Files---------")
 
     v.update({'data':data, 'typesUsed':typesUsed})
     return v
-
+  
 #------------------------------------------#
 """Data classification functions"""
   
@@ -345,22 +356,22 @@ def classify_data(v,seed=1):
     nClasses = bxNClasses.trait_values()['children'][1].value
     classAssign = False if ('bxAssign' not in v) or (bxCluster.trait_values()['children'][1].value is True) else [list(i.value) for i in bxAssign.trait_values()['children']]
     classNames = False if 'bxClNames' not in v else [i.value for i in bxClNames.trait_values()['children']]
+    rmvClass = bxRemove.trait_values()['children'][1].value.split(',')
 
     # Sample data and create geodataframe
     print("------Data Sampling---------")
     if max_nodes < 2: raise ValueError("Insufficient Nodes for belief propagation")
     gdf = tr.get_sample_gdf(data, max_nodes, crs,seed=1)
+    
     # Sample labels
     if 'GeoDataFrame' not in str(type(labels)):
         labelsUsed = tr.get_sample_gdf(labels, max_nodes, crs,seed=1)
-        #labelsUsed = gpd.GeoDataFrame(labelsUsed.copy(),geometry=gpd.points_from_xy(labelsUsed.reset_index()['x'],labelsUsed.reset_index()['y']))
     else: labelsUsed = labels.copy().to_crs(crs)
     if rmvClass: 
-        nClasses -= len(rmvClass)
-        kept = [i not in rmvClass for i in labelsUsed[cn]]
-        labelsUsed = labelsUsed.iloc[kept] # Remove undesire labels (e.g. unclassified data)
+        kept = [i not in rmvClass for i in labelsUsed[cn].astype(str)]
+        labelsUsed = labelsUsed.iloc[kept].reset_index() # Remove undesire labels (e.g. unclassified data)
         if 'GeoDataFrame' not in str(type(labels)):
-            gdf = gdf.iloc[kept]
+            gdf = gdf.iloc[kept].reset_index()
     print("------Data Classification---------")
     
     defClasses, dataUsed = len(labelsUsed[cn].unique()), gdf.copy() # Default classes from labels
@@ -405,8 +416,12 @@ def classify_data(v,seed=1):
         labelsUsed[cn] = tr.group_classes(labelsUsed[cn], classesUsed)
     print("------Finished Data Classification---------") 
 
+    bxBalance = ipw.Box([ipw.Label(value='Balance classes - '), ipw.Checkbox(value=True if nClasses==2 else False, disabled=False, indent=False)])
+    bxLimit = ipw.Box([ipw.Label(value='Loss function limit (logarithmic) - '), ipw.FloatLogSlider(value=1e-3, base=10, min=-15, max=0, step=1)])
+    display(bxBalance, bxLimit)
+    
     # Update variables
-    v.update({'max_nodes':max_nodes, 'nClasses':nClasses, 'classAssign':classAssign,'classNames':classNames, 'labelsUsed':labelsUsed,'initial':initial, 'usedNames':usedNames, 'classesUsed':classesUsed, 'dataUsed':dataUsed})
+    v.update({'max_nodes':max_nodes, 'nClasses':nClasses, 'classAssign':classAssign,'classNames':classNames, 'labelsUsed':labelsUsed,'initial':initial, 'usedNames':usedNames, 'classesUsed':classesUsed, 'dataUsed':dataUsed, 'bxBalance':bxBalance, 'bxLimit':bxLimit})
     return v
   
 #------------------------------------------#
@@ -419,6 +434,8 @@ def run_bp(v):
     confidence = list(bxConf.trait_values()['children'][1].value)
     neighbours = [i.value for i in bxEdges.trait_values()['children']]
     adjacent, geoNeighbours = [i.value for i in bxAdjacent.trait_values()['children'][1::2]]
+    equivUse = bxBalance.trait_values()['children'][1].value
+    limit = bxLimit.trait_values()['children'][1].value
 
     # Split pixels in to train and test sets    
     X_train, X_test, y_train, y_test = tr.train_test_split(labelsUsed, cn, tr.get_polygon(testPoly, conv=True) if 'testPoly' in v.keys() else False, testSplit=(1-(trainSplit/100)))
@@ -447,7 +464,7 @@ def run_bp(v):
         # Run belief propagation
         beliefs, _ = nc.netconf(edges,priors,verbose=True,limit=limit)
     
-    v.update({'trainSplit':trainSplit, 'confidence':confidence, 'neighbours':neighbours, 'adjacent':adjacent, 'geoNeighbours':geoNeighbours, 'X_train':X_train, 'X_test':X_test, 'nodes':nodes, 'priors':priors, 'edges':edges,'beliefs':beliefs,'initial':initial})
+    v.update({'trainSplit':trainSplit, 'confidence':confidence, 'neighbours':neighbours, 'adjacent':adjacent, 'geoNeighbours':geoNeighbours, 'X_train':X_train, 'X_test':X_test, 'nodes':nodes, 'priors':priors, 'edges':edges,'beliefs':beliefs,'initial':initial, 'equivUse':equivUse, 'limit':limit})
     return v
   
 
@@ -455,6 +472,7 @@ def run_bp(v):
 """Evaluation Metrics"""
 def evaluate_output(v):
     for i in v.keys(): globals()[i] = v[i]
+    equivTest = equivUse
     # Get y_true vs y_pred for test set
     y_true, y_pred = tr.get_labels(initial, X_test, beliefs, column=cn, equivTest=equivTest)
     
@@ -473,7 +491,7 @@ def evaluate_output(v):
 
     pl.show_plot()
     
-    v.update({'y_true':y_true, 'y_pred':y_pred, 'true_clf':true_clf, 'pred_clf':pred_clf, 'fig':fig})
+    v.update({'y_true':y_true, 'y_pred':y_pred, 'true_clf':true_clf, 'pred_clf':pred_clf, 'fig':fig, 'equivTest':equivTest})
     
     return v
   
@@ -487,12 +505,17 @@ def save_plot(v, location=False):
       
       
 #----------------------------------------------------#
+import ipyleaflet as ipl
 """Result map plotting"""
 # This bit is not quite as well functioned off.
 # Visualise spatial results
 def map_result(v):
     for i in v.keys(): globals()[i] = v[i] # Retrieve variables to use
+    if nClasses > 2: 
+        print('Not yet supported for more than two classes.')
+        return
     ngrid=100 # Gridding for contour maps
+    
     # Sample for test locations
     tests = gpd.sjoin(initial, X_test, how='left', op='within').dropna(subset=[cn])
     summary = tests.groupby(cn).size()
@@ -528,10 +551,10 @@ def map_result(v):
         colorsRed = ['#e50000','#ff0000','#ff3232','#ff6666','#ff9999']
         colorsGreen = ['#e5ffe5','#b2f0b2','#99eb99','#66e166','#32d732','#00b800'] if (plots['bxNodes'].trait_values()['children'][3].value < 15) else ['#b2f0b2','#99eb99','#66e166','#32d732','#00b800']
         colors=[]
-        for i in range(math.floor(len(cs.allsegs)/2-5)-math.floor(((zi.max()-1-(0-zi.min()))/0.1)/2)): colors.append('#ff0000')
+        for i in range(math.floor(len(cs.allsegs)/2-6)-math.floor(((zi.max()-1-(0-zi.min()))/0.1)/2)): colors.append('#ff0000')
         colors += colorsRed
         colors += colorsGreen
-        for i in range(math.ceil(len(cs.allsegs)/2-5)+math.floor(((zi.max()-1-(0-zi.min()))/0.1)/2)): colors.append('#32d732')
+        for i in range(math.ceil(len(cs.allsegs)/2-4)+math.floor(((zi.max()-1-(0-zi.min()))/0.1)/2)): colors.append('#32d732')
 
         # Add each contour layer as polygon map layer
         allsegs, allkinds = cs.allsegs, cs.allkinds
@@ -591,3 +614,4 @@ def map_result(v):
         ax2.legend(title='Predictions',loc='lower left')
         fig.tight_layout()
         return(fig)
+
