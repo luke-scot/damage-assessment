@@ -1,3 +1,5 @@
+[![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/luke-scot/damage-assessment.git/HEAD?filepath=colab_demo.ipynb)
+
 # MRes damage assessment project outline
 
 ## Objective
