@@ -549,7 +549,7 @@ def map_result(v):
 
         # Colours are added for each layer, unfortunately quite manual just now
         colorsRed = ['#e50000','#ff0000','#ff3232','#ff6666','#ff9999']
-        colorsGreen = ['#e5ffe5','#b2f0b2','#99eb99','#66e166','#32d732','#00b800'] if (plots['bxNodes'].trait_values()['children'][3].value < 15) else ['#b2f0b2','#99eb99','#66e166','#32d732','#00b800']
+        colorsGreen = ['#e5ffe5','#b2f0b2','#99eb99','#66e166','#32d732','#00b800'] if (v['bxNodes'].trait_values()['children'][3].value < 15) else ['#b2f0b2','#99eb99','#66e166','#32d732','#00b800']
         colors=[]
         for i in range(math.floor(len(cs.allsegs)/2-6)-math.floor(((zi.max()-1-(0-zi.min()))/0.1)/2)): colors.append('#ff0000')
         colors += colorsRed
