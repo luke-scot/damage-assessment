@@ -26,3 +26,6 @@ multimodalapplication, notlimitedtodamageassessmentorremotesensing. Forademon-
 stration please visit https://colab.research.google.com/github/luke-scot/damage-
 assessment/blob/main/colab_demo.ipynb. Alternatively, the complete model is avail-
 able at https://github.com/luke-scot/damage-assessment.
+
+## Developer notes
+[bp_for_da.ipynb](https://github.com/luke-scot/damage-assessment/blob/main/bp_for_da.ipynb) is the place to start. This notebook calls the functions in interactions.py, which itself uses the functions stored in all other .py files. All is well commented so dig in, and if you need any help or have any other ideas for cool applications of graph-based belief propagation let me know at [lshc3@cam.ac.uk](https://ai4er-cdt.esc.cam.ac.uk/).
