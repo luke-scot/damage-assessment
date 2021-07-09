@@ -1,3 +1,5 @@
+"""This is a copy of the interactions.py script with additions made to support the colab demonstration notebook"""
+
 import os
 import math
 import imageio
@@ -14,9 +16,9 @@ import folium as fl
 from branca.element import Template, MacroElement
 
 import netconf as nc
-import demo_plotting as pl
-import demo_imports as ip
-import demo_transforms as tr
+import plotting as pl
+import imports as ip
+import transforms as tr
 
 #--------------------------------------------#
 """Input Functions"""
@@ -99,7 +101,7 @@ def input_parameters(v):
                            ipw.Label(value='Longitude - '), ipw.FloatText(value=defs['lon'], placeholder='dd.dddd',  disabled=False,layout=layout),
                            ipw.Label(value='Zoom - '), ipw.IntText(value=defs['zoom'], placeholder='dd.dddd',  disabled=False, layout=layout)])
         if defs['mapOption']: bxMapOpt = ipw.Box([ipw.Label(value='Interactive map'), ipw.Checkbox(value=True, disabled=False, indent=False)])
-        else: bxMapOpt = ipw.Box([ipw.Label(value='Standard test area - '), ipw.Checkbox(value=False, disabled=False, indent=False)])
+        else: bxMapOpt = ipw.Box([ipw.Label(value='Standard test area - '), ipw.Checkbox(value=True, disabled=False, indent=False)])
         display(bxMap,bxMapOpt)
         v.update({'bxMap':bxMap, 'bxMapOpt':bxMapOpt})
     
@@ -153,6 +155,7 @@ def which_download(v):
     else: dl = '.'
     return dl
 
+# This looks grim, all for you guys to have the ease of colab.....
 def folium_labels(gdf, m, cn='class', classes=False, colors=False, layer_name='Ground Data'):
     classes = gdf[cn].unique() if classes is False else classes
     if colors is False:
@@ -283,13 +286,12 @@ def interactive_label_map(v, labels):
     m1 = folium_poly(labels, m1, stdTest=stdTest if 'stdTest' in v.keys() else False, bounds=defs['polyBounds'] if 'polyBounds' in defs.keys() else False)
     display(m1)
        
-#     m1 = pl.create_map(lat, lon, zoom)
-#     m1 = pl.plot_labels(labels, m1, cn=cn, classes=False, colors=defs['colors'] if 'colors' in defs.keys() else False, layer_name='Ground data')
-#     m1, testPoly = pl.draw_polygon(labels, m1, stdTest=stdTest if 'stdTest' in v.keys() else False, bounds=defs['polyBounds'] if 'polyBounds' in defs.keys() else False)
-#     display(m1)
+    mtemp = pl.create_map(lat, lon, zoom)
+    #mtemp = pl.plot_labels(labels, m1, cn=cn, classes=False, colors=defs['colors'] if 'colors' in defs.keys() else False, layer_name='Ground data')
+    mtemp, testPoly = pl.draw_polygon(labels, mtemp, stdTest=stdTest if 'stdTest' in v.keys() else False, bounds=defs['polyBounds'] if 'polyBounds' in defs.keys() else False)
     
     # Update variables
-    v.update({'testPoly': testPoly, 'm1':m1})
+    v.update({'testPoly':testPoly, 'm1':m1})
     return v    
 
 # Ask for entry of model parameters
@@ -304,6 +306,7 @@ def model_parameters(v):
     if v['defs']['map'] is True and (v['defs']['mapOption'] is False or v['bxMapOpt'].trait_values()['children'][1].value is True):
         try: 
             labels = ip.shape_to_gdf(groundTruth, cn, splitString, crs=crs)
+            v.update({'labels':labels})
             v = interactive_label_map(v,labels)
         except:
             print('Interactive map not available with label format. Trying static map.')
@@ -351,44 +354,19 @@ def model_parameters(v):
     bxNClasses = ipw.Box([ipw.Label(value='Classes for Model - '), ipw.Dropdown(options=list(range(2,len(unique)+1)),value=max(list(range(len(unique)+1))),disabled=False)])   
     display(bxRemove,bxNClasses)
     
-#     # Once confirmed then display classification options
-#     button3 = ipw.Button(description='Confirm Classes', disabled=False, button_style='success', tooltip='Confirm', icon='check')
-#     out3 = ipw.Output()
-    
     bxCluster = ipw.Box([ipw.Label(value='Use class clustering - Uncheck to assign classes below:'), ipw.Checkbox(value=True, disabled=False, indent=False)])
-    # Assign each value to a class
+    # Assign each labels to classes
     bxAssign = ipw.Box([ipw.Text(value='', placeholder='Enter Labels', description='Class '+str(i)+':', disabled=False) for i in range(len(unique))], layout=box_layout)
     bxClNames = ipw.Box([ipw.Text(value='cl'+str(i), placeholder='Enter Class Name', description='Class '+str(i)+':', disabled=False) for i in range(len(unique))],layout=box_layout)
-    display(bxCluster, bxAssign)
+    
+    # Display class boxes
+    display(bxCluster)
+    display(ipw.HTML(value = "Assign labels to classes: separate label names by a comma and no spaces (colab fix)"))
+    display(bxAssign)
     display(ipw.HTML(value = "Edit Class Names:"))
     display(bxClNames)
     v.update({'bxCluster':bxCluster, 'bxAssign':bxAssign, 'bxClNames':bxClNames})
-    
-#     def on_button3_clicked(b3):
-#         button3.description = 'Confirmed'
-#         with out3:
-#             # Read number of classes
-#             nClasses = bxNClasses.trait_values()['children'][1].value
-#             # If class grouping required propose options
-#             if nClasses < len(unique):
-#                 print('-------------')
-#                 # Opt to use clustering or not
-#                 bxCluster = ipw.Box([ipw.Label(value='Use class clustering - Uncheck to assign classes below:'), ipw.Checkbox(value=True, disabled=False, indent=False)])
-#                 # Assign each value to a class
-#                 bxAssign = ipw.Box([ipw.SelectMultiple(options=unique, rows=len(unique), description='Class '+str(i)+':', disabled=False) for i in range(nClasses)], layout=box_layout)
-#                 # Edit class names if desired
-#                 bxClNames = ipw.Box([ipw.Text(value='cl'+str(i), placeholder='Enter Class Name', description='Class '+str(i)+':', disabled=False) for i in range(nClasses)],layout=box_layout)
-#                 display(bxCluster, bxAssign)
-#                 display(ipw.HTML(value = "Edit Class Names:"))
-#                 display(bxClNames)
-                
-#                 v.update({'bxCluster':bxCluster, 'bxAssign':bxAssign, 'bxClNames':bxClNames})
-#                 # PCA options if needed in future
-#                 # pca, pcaComps, meanCluster = False, 2, True # Clustering properties if used
-    
-#     # Display confirmation button
-#     button3.on_click(on_button3_clicked)
-#     display(ipw.VBox([button3, out3]))
+
     
     # Update variables
     v.update({'bxNClasses':bxNClasses, 'bxRemove':bxRemove, 'bxNodes':bxNodes,'bxEdges':bxEdges,'bxAdjacent':bxAdjacent,'unique':unique,'labels': labels})
@@ -495,18 +473,18 @@ def classify_data(v,seed=1):
     for i in v.keys(): globals()[i] = v[i]
     max_nodes = bxNodes.trait_values()['children'][1].value
     nClasses = bxNClasses.trait_values()['children'][1].value
-#     classAssign = False if ('bxAssign' not in v) or (bxCluster.trait_values()['children'][1].value is True) else [list(i.value) for i in bxAssign.trait_values()['children']]
-#     classNames = False if 'bxClNames' not in v else [i.value for i in bxClNames.trait_values()['children']]
+    classAssign = False if ('bxAssign' not in v) or (bxCluster.trait_values()['children'][1].value is True) else [i.value.split(',') for i in bxAssign.trait_values()['children'][:nClasses]]
+    classNames = False if 'bxClNames' not in v else [i.value for i in bxClNames.trait_values()['children'][:nClasses]]
     rmvClass = bxRemove.trait_values()['children'][1].value.split(',')
-
+    
     # Sample data and create geodataframe
-    print("------Data Sampling---------")
+    print("------Data Sampling---------") 
     if max_nodes < 2: raise ValueError("Insufficient Nodes for belief propagation")
-    gdf = tr.get_sample_gdf(data, max_nodes, crs,seed=1)
+    gdf = tr.get_sample_gdf(data[::int(np.floor(len(data)/100000))] if len(data) > 100000 else data, max_nodes, crs,seed=1) # If statement so notebook doesn't crash with lots of data
     
     # Sample labels
     if 'GeoDataFrame' not in str(type(labels)):
-        labelsUsed = tr.get_sample_gdf(labels, max_nodes, crs,seed=1)
+        labelsUsed = tr.get_sample_gdf(labels[::int(np.floor(len(data)/100000))] if len(data) > 100000 else labels, max_nodes, crs,seed=1)
     else: labelsUsed = labels.copy().to_crs(crs)
     if rmvClass: 
         kept = [i not in rmvClass for i in labelsUsed[cn].astype(str)]
@@ -564,6 +542,7 @@ def classify_data(v,seed=1):
     # Update variables
     v.update({'max_nodes':max_nodes, 'nClasses':nClasses, 'classAssign':classAssign,'classNames':classNames, 'labelsUsed':labelsUsed,'initial':initial, 'usedNames':usedNames, 'classesUsed':classesUsed, 'dataUsed':dataUsed, 'bxBalance':bxBalance, 'bxLimit':bxLimit})
     return v
+  
   
 #------------------------------------------#
 """Run Belief Propagation"""

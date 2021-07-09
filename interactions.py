@@ -12,9 +12,9 @@ from ipyleaflet import LayersControl
 from scipy.interpolate import griddata
 
 import netconf as nc
-import demo_plotting as pl
-import demo_imports as ip
-import demo_transforms as tr
+import plotting as pl
+import imports as ip
+import transforms as tr
 
 #--------------------------------------------#
 """Input Functions"""
@@ -174,6 +174,7 @@ def model_parameters(v):
     if v['defs']['map'] is True and (v['defs']['mapOption'] is False or v['bxMapOpt'].trait_values()['children'][1].value is True):
         try: 
             labels = ip.shape_to_gdf(groundTruth, cn, splitString, crs=crs)
+            v.update({'labels':labels})
             v = interactive_label_map(v,labels)
         except:
             print('Interactive map not available with label format. Trying static map.')
@@ -357,15 +358,15 @@ def classify_data(v,seed=1):
     classAssign = False if ('bxAssign' not in v) or (bxCluster.trait_values()['children'][1].value is True) else [list(i.value) for i in bxAssign.trait_values()['children']]
     classNames = False if 'bxClNames' not in v else [i.value for i in bxClNames.trait_values()['children']]
     rmvClass = bxRemove.trait_values()['children'][1].value.split(',')
-
+    
     # Sample data and create geodataframe
-    print("------Data Sampling---------")
+    print("------Data Sampling---------") 
     if max_nodes < 2: raise ValueError("Insufficient Nodes for belief propagation")
-    gdf = tr.get_sample_gdf(data, max_nodes, crs,seed=1)
+    gdf = tr.get_sample_gdf(data[::int(np.floor(len(data)/100000))] if len(data) > 100000 else data, max_nodes, crs,seed=1) # If statement so notebook doesn't crash with lots of data
     
     # Sample labels
     if 'GeoDataFrame' not in str(type(labels)):
-        labelsUsed = tr.get_sample_gdf(labels, max_nodes, crs,seed=1)
+        labelsUsed = tr.get_sample_gdf(labels[::int(np.floor(len(data)/100000))] if len(data) > 100000 else labels, max_nodes, crs,seed=1)
     else: labelsUsed = labels.copy().to_crs(crs)
     if rmvClass: 
         kept = [i not in rmvClass for i in labelsUsed[cn].astype(str)]

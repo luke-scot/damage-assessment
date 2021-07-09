@@ -30,7 +30,7 @@ def get_polygon(poly, conv = False):
 
 def get_sample_gdf(data, max_nodes, crs='EPSG:4326',seed=1):
     random.seed(seed)
-    samples = data.copy().iloc[random.sample(range(0, data.shape[0]), max_nodes)].reset_index(drop=False) if len(data) > max_nodes else data.copy().reset_index(drop=False)
+    samples = data.iloc[random.sample(range(0, data.shape[0]), max_nodes)].reset_index(drop=False) if len(data) > max_nodes else data.reset_index(drop=False)
     return gpd.GeoDataFrame(samples[samples.columns[2:]], geometry=gpd.points_from_xy(samples['y'], samples['x']),crs=crs)
   
 # K-means clustering implementation
