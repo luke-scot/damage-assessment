@@ -4,15 +4,16 @@ import os
 import math
 import imageio
 import numpy as np
+import folium as fl
 import geopandas as gpd
 import ipywidgets as ipw
 import ipyleaflet as ipl
+import shapely.geometry as sg
 import matplotlib.pyplot as plt
 import matplotlib.colors as clrs
 from branca.colormap import linear
 from ipyleaflet import LayersControl
 from scipy.interpolate import griddata
-import folium as fl
 from branca.element import Template, MacroElement
 
 import netconf as nc
