@@ -133,7 +133,7 @@ def static_label_plot(labelarr):
     a = ax.imshow(labelarr[0],cmap='RdYlBu')
     ax.set_title('Ground Truth',fontsize=13), ax.set_xlabel('x pixels',fontsize=12), ax.set_ylabel('y pixels',fontsize=12)
     ac = fig.colorbar(a,ax=ax)
-    ac.set_label('Label Class',fontsize=12)
+    ac.set_label('Label',fontsize=12)
     show_plot()
 
 #-----------------------------------------#
