@@ -523,7 +523,7 @@ def classify_data(v,seed=1):
             # Run clustering
             meanCluster = True
             kmeans, clusterClasses, initLabels = tr.run_cluster(X.loc[allPixels[cn].dropna().index].values.reshape(-1,len(types)), allPixels[cn].dropna(), meanCluster, nClasses)
-            print('Clustered classes:{} , original clabels:{}'.format(clusterClasses, initLabels))
+            print('Clustered classes:{} , original labels:{}'.format(clusterClasses, initLabels))
             # Create groups of classes
             classesUsed = []
             for j in range(nClasses): classesUsed.append([initLabels[i] for i, x in enumerate(list(clusterClasses)) if x==j])
