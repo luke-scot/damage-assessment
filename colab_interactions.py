@@ -485,7 +485,11 @@ def classify_data(v,seed=1):
     # Sample labels
     if 'GeoDataFrame' not in str(type(labels)):
         labelsUsed = tr.get_sample_gdf(labels[::int(np.floor(len(data)/100000))] if len(data) > 100000 else labels, max_nodes, crs,seed=1)
-    else: labelsUsed = labels.copy().to_crs(crs)
+    else: 
+      labelsUsed = labels.copy().to_crs(crs)
+      labelsUsed = labelsUsed[['Multi' not in str(type(i)) for i in labelsUsed.geometry]]
+      labelsUsed['geometry'] = [sg.Polygon(np.array([labelsUsed.geometry[i].exterior.coords.xy[1], labelsUsed.geometry[i].exterior.coords.xy[0]]).transpose()) for i in labelsUsed.index]
+   
     if rmvClass: 
         kept = [i not in rmvClass for i in labelsUsed[cn].astype(str)]
         labelsUsed = labelsUsed.iloc[kept].reset_index() # Remove undesire labels (e.g. unclassified data)
