@@ -635,108 +635,69 @@ import ipyleaflet as ipl
 # This bit is not quite as well functioned off.
 # Visualise spatial results
 def map_result(v):
-    for i in v.keys(): globals()[i] = v[i] # Retrieve variables to use
-    if nClasses > 2: 
-        print('Not yet supported for more than two classes.')
-        return
-    ngrid=100 # Gridding for contour maps
-    
-    # Sample for test locations
-    tests = gpd.sjoin(initial, X_test, how='left', op='within').dropna(subset=[cn])
-    summary = tests.groupby(cn).size()
-    if equivTest:
-        equiv = gpd.GeoDataFrame()
-        for i in summary.index.values:
-            equiv = equiv.append(tests[tests[cn] == i][0:min(summary)])
-        equiv = equiv.append(tests[[np.isnan(x) for x in tests[cn]]])
-        tests = equiv.copy()
-    tests['prediction']=pred_clf
+  for i in v.keys(): globals()[i] = v[i] # Retrieve variables to use
+  if nClasses > 2: 
+      print('Not yet supported for more than two classes.')
+  #    return
+  ngrid=100 # Gridding for contour maps
 
-    # Plot interactive map for shape type labels
-    if 'GeoDataFrame' in str(type(labels)):
-        # Create map
-        mf = pl.create_map(lat, lon, zoom, basemap=ipl.basemaps.OpenStreetMap.BlackAndWhite)
+  # Sample for test locations
+  tests = gpd.sjoin(initial, X_test, how='left', op='within').dropna(subset=[cn])
+  summary = tests.groupby(cn).size()
+  if equivTest:
+      equiv = gpd.GeoDataFrame()
+      for i in summary.index.values:
+          equiv = equiv.append(tests[tests[cn] == i][0:min(summary)])
+      equiv = equiv.append(tests[[np.isnan(x) for x in tests[cn]]])
+      tests = equiv.copy()
+  tests['prediction']=pred_clf
 
-        # Plot ground truth
-        pl.plot_assessments(labels, mf, cn=cn, layer_name='Ground truth', fill=0.3, legName='Ground Truth')
+  # Try plotting for point labels (e.g. Houston)
+  try:
+    tryout = labelsUsed.dropna().geometry.x
+    fig, [ax1,ax2] = pl.create_subplots(2,1,[10,5])
+    normalized = (beliefs[:,1]-min(beliefs[:,1]))/(max(beliefs[:,1])-min(beliefs[:,1]))
+    res = ax1.tricontourf(nodes.geometry.y,nodes.geometry.x,normalized,cmap='RdYlGn',levels=10)
+    cb1 = fig.colorbar(res,ax=ax1)
+    cb1.set_label('Class 1 probability',fontsize=12), ax1.set_title('Class Probability Map',size=14)
+    ax1.invert_yaxis()
+    ax1.set_xlabel('x pixels', fontsize=12), ax1.set_ylabel('y pixels',fontsize=12)
+    ax2.set_xlabel('x pixels', fontsize=12), ax2.set_ylabel('y pixels',fontsize=12)
 
-        # Plot training locations
-        pl.plot_assessments(nodes.to_crs({'init':crs}).dropna(), mf, layer_name='Train Locations', no_leg=True, classes=sorted([x for x in nodes.decision.unique() if str(x) != 'nan']), colors = ['green', 'red'] if nClasses==2 else None)
+    ax2.invert_yaxis()
 
-        # Plot test locations
-        pl.plot_assessments(tests.to_crs({'init':crs}).dropna(), mf, cn='prediction', layer_name='Test Predictions', no_leg=True, classes=[x for x in tests.prediction.unique() if str(x) != 'nan'], colors = ['green', 'red'] if nClasses==2 else None)
+    a = ax2.tricontourf(labelsUsed.dropna().geometry.y,labelsUsed.dropna().geometry.x, labelsUsed['class'].values,alpha=0.7,levels=1, cmap='RdYlGn')
+    a2 = ax2.tricontourf(labelsUsed.dropna().geometry.y,labelsUsed.dropna().geometry.x, labelsUsed['class'].values,alpha=0.7,levels=2, cmap='RdYlGn')
 
-        # Create contours for predictions 
-        xi, yi = np.linspace(nodes.geometry.x.min(), nodes.geometry.x.max(), ngrid), np.linspace(nodes.geometry.y.min(), nodes.geometry.y.max(), ngrid)
-        zi = griddata((nodes.geometry.x, nodes.geometry.y), (beliefs[:,0]-beliefs[:,1]+0.5), (xi[None, :], yi[:, None]), method='nearest')
-        cs = plt.contourf(xi, yi, zi, levels=math.floor((zi.max()-zi.min())/0.1)-1, extend='both')
-        plt.close() 
+    ds = 2 # Downsample
+    ax2.scatter(tests[::ds].geometry.y,tests[::ds].geometry.x,c='r',label=classNames[0])
+    ax2.scatter(tests[::ds].geometry.y,tests[::ds].geometry.x,c='g',label=classNames[1])
+    ax2.scatter(tests[::ds].geometry.y,tests[::ds].geometry.x,c=[classNames.index(i) for i in pred_clf][::ds],cmap='RdYlGn')
+    cb2 = fig.colorbar(a, ax=ax2, ticks=[0,1])
+    cb2.set_label('Ground Truth Class',fontsize=12), ax2.set_title('Test Prediction Map',size=14)
+    ax2.legend(title='Predictions',loc='lower left')
+  # else plot for polygon labels (e.g. Beirut)
+  except: 
+    fig, [ax1,ax2] = pl.create_subplots(2,1,[12,15])
+    normalized = (beliefs[:,1]-min(beliefs[:,1]))/(max(beliefs[:,1])-min(beliefs[:,1]))
+    res = ax1.tricontourf(nodes.geometry.y,nodes.geometry.x,normalized,cmap='RdYlGn',levels=10)
+    lplot = labelsUsed[labelsUsed.within(tr.get_polygon(testPoly,conv=True))]
+    lplot = lplot[['Multi' not in str(type(i)) for i in lplot.geometry]]
+    lplot['geometry'] = [sg.Polygon(np.array([lplot.geometry[i].exterior.coords.xy[1], lplot.geometry[i].exterior.coords.xy[0]]).transpose()) for i in lplot.index]
+    a = lplot.dropna().plot(column=cn, ax=ax2, cmap='RdYlGn', alpha=0.7, label='Ground Truth')
 
-        # Colours are added for each layer, unfortunately quite manual just now
-        colorsRed = ['#e50000','#ff0000','#ff3232','#ff6666','#ff9999']
-        colorsGreen = ['#e5ffe5','#b2f0b2','#99eb99','#66e166','#32d732','#00b800'] if (v['bxNodes'].trait_values()['children'][3].value < 15) else ['#b2f0b2','#99eb99','#66e166','#32d732','#00b800']
-        colors=[]
-        for i in range(math.floor(len(cs.allsegs)/2-6)-math.floor(((zi.max()-1-(0-zi.min()))/0.1)/2)): colors.append('#ff0000')
-        colors += colorsRed
-        colors += colorsGreen
-        for i in range(math.ceil(len(cs.allsegs)/2-4)+math.floor(((zi.max()-1-(0-zi.min()))/0.1)/2)): colors.append('#32d732')
+    ax2.scatter(tests.geometry.y,tests.geometry.x,c='r',label=classNames[0])
+    ax2.scatter(tests.geometry.y,tests.geometry.x,c='g',label=classNames[1])
+    ax2.scatter(tests.geometry.y,tests.geometry.x,c=[classNames.index(i) for i in pred_clf],cmap='RdYlGn')
 
-        # Add each contour layer as polygon map layer
-        allsegs, allkinds = cs.allsegs, cs.allkinds
-        contourLayer = ipl.LayerGroup(name = 'Assessment Contours')
-        for clev in range(len(cs.allsegs)):
-            kinds = None if allkinds is None else allkinds[clev]
-            segs = pl.split_contours(allsegs[clev], kinds)
-            polygons = ipl.Polygon(locations=[p.tolist() for p in segs], color=colors[clev],
-                                   weight=1, opacity=0.5, fill_color=colors[clev], fill_opacity=0.4,
-                                   name='layer_name')
-            contourLayer.add_layer(polygons)
-        mf.add_layer(contourLayer)
+    cb1 = fig.colorbar(res,ax=ax1)
+    cb1.set_label('Class 1 probability',fontsize=15), ax1.set_title('Class probability map',size=16)
 
-        # Add layer control
-        control = ipl.LayersControl(position='topright')
-        mf.add_control(control)
+    ax1.set_xlabel('Longitude', fontsize=14), ax1.set_ylabel('Latitude',fontsize=14)
+    ax2.set_xlabel('Longitude', fontsize=14), ax2.set_ylabel('Latitude',fontsize=14)
 
-        # Add colors legend
-        leg = dict(zip([str(round(x-0.1,1))+'-'+str(round(x,1)) for x in np.linspace(1,0.1,10).tolist()],colorsRed+colorsGreen))
-        l2 = ipl.LegendControl(leg, name='Damage Prob', position="topleft")
-        mf.add_control(l2)
+    ax2.set_title('Test predictions over ground truth',size=16)
+    ax2.legend(title='Predictions',loc='upper left', fontsize=14)
 
-        # Add widgets to map
-        zoom_slider = ipw.IntSlider(description='Zoom level:', min=7, max=18, value=14)
-        ipw.jslink((zoom_slider, 'value'), (mf, 'zoom'))
-        widget_control1 = ipl.WidgetControl(widget=zoom_slider, position='topright')
-        mf.add_control(widget_control1)
-        mf.add_control(ipl.FullScreenControl(position='topright'))
-        mf.zoom_control = False
-
-        # Display map
-        display(mf)
-        return mf
-
-    # Plot static map for image style labelling
-    else:
-        fig, [ax1,ax2] = pl.create_subplots(2,1,[10,5])
-        normalized = (beliefs[:,1]-min(beliefs[:,1]))/(max(beliefs[:,1])-min(beliefs[:,1]))
-        res = ax1.tricontourf(nodes.geometry.x,nodes.geometry.y,normalized,cmap='RdYlGn',levels=10)
-        cb1 = fig.colorbar(res,ax=ax1)
-        cb1.set_label('Class 1 probability',fontsize=12), ax1.set_title('Class Probability Map',size=14)
-        ax1.invert_yaxis()
-        ax1.set_xlabel('x pixels', fontsize=12), ax1.set_ylabel('y pixels',fontsize=12)
-        ax2.set_xlabel('x pixels', fontsize=12), ax2.set_ylabel('y pixels',fontsize=12)
-
-        ax2.invert_yaxis()
-
-        a = ax2.tricontourf(labelsUsed.dropna().geometry.x,labelsUsed.dropna().geometry.y, labelsUsed['class'].values,alpha=0.7,levels=1, cmap='RdYlGn')
-        a2 = ax2.tricontourf(labelsUsed.dropna().geometry.x,labelsUsed.dropna().geometry.y, labelsUsed['class'].values,alpha=0.7,levels=2, cmap='RdYlGn')
-
-        ds = 5 # Downsample
-        ax2.scatter(tests[::ds].geometry.x,tests[::ds].geometry.y,c='r',label=classNames[0])
-        ax2.scatter(tests[::ds].geometry.x,tests[::ds].geometry.y,c='g',label=classNames[1])
-        ax2.scatter(tests[::ds].geometry.x,tests[::ds].geometry.y,c=[classNames.index(i) for i in pred_clf][::ds],cmap='RdYlGn')
-        cb2 = fig.colorbar(a, ax=ax2, ticks=[0,1])
-        cb2.set_label('Ground Truth Class',fontsize=12), ax2.set_title('Test Prediction Map',size=14)
-        ax2.legend(title='Predictions',loc='lower left')
-        fig.tight_layout()
-        return(fig)
-
+  fig.tight_layout()
+  return(fig)
